@@ -83,6 +83,13 @@ internal sealed class SessionForm : Form
 
     public string ChatDraft { set => _chat.Draft = value; }
 
+    /// <summary>The toolbar's area inside the window (for the toolbar close-up screenshot).</summary>
+    public Rectangle ToolbarBoundsInWindow()
+    {
+        var p = _toolbar.PointToScreen(Point.Empty);
+        return new Rectangle(p.X - Bounds.X, p.Y - Bounds.Y, _toolbar.Width, _toolbar.Height);
+    }
+
     public void ShowDemo(Bitmap frame, (string who, string text)[] chat)
     {
         _demo = true;

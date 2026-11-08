@@ -12,6 +12,13 @@ self-hosted ID/relay server.
 
 <img src="app/shots/chat.png" width="280" alt="Rplus chat panel close-up">
 
+![Rplus session toolbar](app/shots/toolbar.png)
+
+The session toolbar, left to right: image quality, view style (fit to window or original size),
+**Keyboard** (send your key presses to the remote computer; the mouse always works), **Clipboard** (type your
+clipboard text on the remote computer), **Files** (file transfer), **Chat**, **Full screen** and
+**Disconnect**. Highlighted buttons are switched on.
+
 ![Rplus file transfer between two computers](app/shots/files.png)
 
 ![Rplus recent and favourite computers](app/shots/recent.png)

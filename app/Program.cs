@@ -32,7 +32,7 @@ internal static class Program
 
         // --session-screenshot <out.png>: the session window with a made-up remote desktop (no connection)
         int ss = Array.IndexOf(args, "--session-screenshot");
-        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1], Array.IndexOf(args, "--files") >= 0, Array.IndexOf(args, "--chat") >= 0); return; }
+        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1], Array.IndexOf(args, "--files") >= 0, Array.IndexOf(args, "--chat") >= 0, Array.IndexOf(args, "--toolbar") >= 0); return; }
 
         // --demo: throwaway settings (random ID, no server, default approval), e.g. for README screenshots
         var cfg = Array.IndexOf(args, "--demo") >= 0 ? Config.Demo() : Config.Load();
@@ -174,12 +174,13 @@ internal static class Program
 
     /// <summary>Saves the session window showing a drawn demo desktop. Nothing real is captured:
     /// the settings are throwaway, there is no connection, and the window renders itself.</summary>
-    private static void RunSessionScreenshot(string path, bool files = false, bool chatOnly = false)
+    private static void RunSessionScreenshot(string path, bool files = false, bool chatOnly = false, bool toolbarOnly = false)
     {
         var cfg = Config.Demo();
         cfg.ViewStyle = "Adjust window";   // show the whole demo desktop
         string peer = Config.Demo().Id;
         var form = new SessionForm(cfg, "", 0, false, peer) { StartPosition = FormStartPosition.Manual, Location = new Point(0, 0) };
+        if (toolbarOnly) form.ClientSize = new Size(760, form.ClientSize.Height);   // keeps Disconnect close to the other buttons
         using var desk = DemoDesktop(1440, 900);
         if (files)
         {
@@ -224,9 +225,9 @@ internal static class Program
                 IntPtr hdc = g.GetHdc();
                 try { PrintWindow(form.Handle, hdc, 2 /*PW_RENDERFULLCONTENT*/); } finally { g.ReleaseHdc(hdc); }
             }
-            if (chatOnly)
+            if (chatOnly || toolbarOnly)
             {
-                var r = Rectangle.Intersect(form.ChatBoundsInWindow(), new Rectangle(0, 0, bmp.Width, bmp.Height));
+                var r = Rectangle.Intersect(chatOnly ? form.ChatBoundsInWindow() : form.ToolbarBoundsInWindow(), new Rectangle(0, 0, bmp.Width, bmp.Height));
                 using var crop = bmp.Clone(r, bmp.PixelFormat);
                 crop.Save(path, ImageFormat.Png);
             }
