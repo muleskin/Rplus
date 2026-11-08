@@ -37,6 +37,10 @@ internal static class Theme
         return p;
     }
 
+    /// <summary>A 9-digit ID spaced as "123 456 789"; anything else (an address) is returned unchanged.</summary>
+    public static string PrettyId(string id) =>
+        id != null && id.Length == 9 && id.All(char.IsDigit) ? $"{id[..3]} {id.Substring(3, 3)} {id.Substring(6, 3)}" : id;
+
     /// <summary>The R+ app icon, embedded as a resource.</summary>
     public static Icon AppIcon()
     {

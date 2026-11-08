@@ -38,6 +38,10 @@ internal static class Program
         int asx = Array.IndexOf(args, "--accept-screenshot");
         if (asx >= 0 && asx + 1 < args.Length) { RunAcceptScreenshot(args[asx + 1]); return; }
 
+        // --password-screenshot <out.png>: the password prompt for a made-up remote ID (no connection)
+        int psx = Array.IndexOf(args, "--password-screenshot");
+        if (psx >= 0 && psx + 1 < args.Length) { RunPasswordScreenshot(args[psx + 1]); return; }
+
         // --demo: throwaway settings (random ID, no server, default approval), e.g. for README screenshots
         var cfg = Array.IndexOf(args, "--demo") >= 0 ? Config.Demo() : Config.Load();
 
@@ -243,9 +247,21 @@ internal static class Program
     }
 
     /// <summary>Saves the accept window for a random visitor ID. Nothing connects; the window renders itself.</summary>
-    private static void RunAcceptScreenshot(string path)
+    private static void RunAcceptScreenshot(string path) =>
+        SaveDialogShot(new AcceptForm(Config.Demo().Id), path);
+
+    /// <summary>Saves the password prompt for a random remote ID, with a few hidden characters typed.</summary>
+    private static void RunPasswordScreenshot(string path)
     {
-        var form = new AcceptForm(Config.Demo().Id) { StartPosition = FormStartPosition.Manual, Location = new Point(0, 0) };
+        var demo = Config.Demo();
+        SaveDialogShot(new PasswordForm(demo.Id, canWaitForAccept: true) { Password = demo.RuntimeOneTimePassword }, path);
+    }
+
+    /// <summary>Shows a dialog at the screen corner and saves what it draws (never the screen behind it).</summary>
+    private static void SaveDialogShot(Form form, string path)
+    {
+        form.StartPosition = FormStartPosition.Manual;
+        form.Location = new Point(0, 0);
         form.Show();
         for (int i = 0; i < 80; i++) { Application.DoEvents(); Thread.Sleep(8); }
         try

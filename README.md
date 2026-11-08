@@ -23,6 +23,11 @@ When someone connects and "Accept window" is on in Settings, the shared computer
 
 <img src="app/shots/accept.png" width="376" alt="Rplus accept window for an incoming connection">
 
+When "Password" is on, the person connecting is asked for the password. With both on, they can
+also close the prompt and wait for someone to click Accept:
+
+<img src="app/shots/password.png" width="356" alt="Rplus password prompt when connecting">
+
 ![Rplus file transfer between two computers](app/shots/files.png)
 
 ![Rplus recent and favourite computers](app/shots/recent.png)

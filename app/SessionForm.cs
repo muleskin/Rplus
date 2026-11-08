@@ -310,26 +310,29 @@ internal sealed class ToolButton : Control
 internal sealed class PasswordForm : Form
 {
     private readonly TextBox _box;
-    public string Password => _box.Text;
+    public string Password { get => _box.Text; set => _box.Text = value; }
     public PasswordForm(string host, bool canWaitForAccept = false)
     {
         Text = "Password required";
+        Icon = Theme.AppIcon();
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
-        StartPosition = FormStartPosition.CenterParent; ClientSize = new Size(340, 160);
+        // the "wait for them to accept" hint gets its own row instead of squeezing between box and buttons
+        int buttonsY = canWaitForAccept ? 128 : 100;
+        StartPosition = FormStartPosition.CenterParent; ClientSize = new Size(340, buttonsY + 60);
         BackColor = Theme.Card; Font = Theme.F(10f);
-        Controls.Add(new Label { Text = $"Enter the password for {host}", AutoSize = true,
+        Controls.Add(new Label { Text = $"Enter the password for {Theme.PrettyId(host)}", AutoSize = true,
             Location = new Point(20, 20), ForeColor = Theme.TextMain, Font = Theme.F(10f) });
         if (canWaitForAccept)
             Controls.Add(new Label { Text = "…or close this and wait for them to accept.", AutoSize = true,
-                Location = new Point(20, 82), ForeColor = Theme.TextDim, Font = Theme.F(8.5f) });
+                Location = new Point(20, 94), ForeColor = Theme.TextDim, Font = Theme.F(8.5f) });
         _box = new TextBox { UseSystemPasswordChar = true, Location = new Point(20, 54), Width = 300, Font = Theme.F(12f) };
         Controls.Add(_box);
-        var ok = new FlatButton { Text = "Connect", Primary = true, Location = new Point(172, 100), Size = new Size(148, 40) };
-        var cancel = new FlatButton { Text = "Cancel", Primary = false, Location = new Point(20, 100), Size = new Size(140, 40) };
+        var ok = new FlatButton { Text = "Connect", Primary = true, Location = new Point(172, buttonsY), Size = new Size(148, 40) };
+        var cancel = new FlatButton { Text = "Cancel", Primary = false, Location = new Point(20, buttonsY), Size = new Size(140, 40) };
         ok.Click += (_, _) => { DialogResult = DialogResult.OK; Close(); };
         cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
         Controls.Add(ok); Controls.Add(cancel);
         AcceptButton = ok; CancelButton = cancel;
-        Shown += (_, _) => _box.Focus();
+        Shown += (_, _) => { _box.Focus(); _box.SelectionStart = _box.TextLength; _box.SelectionLength = 0; };
     }
 }
