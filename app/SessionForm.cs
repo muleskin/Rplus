@@ -54,7 +54,22 @@ internal sealed class SessionForm : Form
         Controls.Add(_status);
         Controls.Add(_toolbar);
 
-        Shown += (_, _) => StartClient();
+        Shown += (_, _) => { if (!_demo) StartClient(); };
+    }
+
+    private bool _demo;
+    private ToolButton _lastTool, _chatBtn;
+
+    /// <summary>No connection: shows the given picture as the remote screen, plus a short chat.
+    /// Used by --session-screenshot so screenshots never show a real desktop.</summary>
+    public void ShowDemo(Bitmap frame, (string who, string text)[] chat)
+    {
+        _demo = true;
+        _screen.SetFrame(frame);
+        foreach (var (who, text) in chat) _chat.Add(who, text);
+        _chat.Visible = true;
+        if (_chatBtn != null) { _chatBtn.On = true; _chatBtn.Invalidate(); }
+        SetStatus("Connected");
     }
 
     // ---------------- toolbar ----------------
@@ -91,6 +106,7 @@ internal sealed class SessionForm : Form
         x = AddTool(x, "", "Clipboard", false, _ => SendClipboard(), toggle: false);
         x = AddTool(x, "", "Files", false, b => ToggleFiles(b));
         x = AddTool(x, "", "Chat", false, b => { _chat.Visible = b; });
+        _chatBtn = _lastTool;
         x = AddTool(x, "", "Full screen", false, b => ToggleFullscreen(b));
 
         var close = new FlatButton { Text = "Disconnect", Primary = true, Fill = Theme.Danger,
@@ -107,6 +123,7 @@ internal sealed class SessionForm : Form
             Location = new Point(x, 7), Size = new Size(46, 32) };
         b.Clicked = () => act(b.On);
         _toolbar.Controls.Add(b);
+        _lastTool = b;
         return x + 50;
     }
 

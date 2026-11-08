@@ -13,3 +13,4 @@ app/publish/
 app/shots/*
 !app/shots/icon.png
 !app/shots/home.png
+!app/shots/session.png

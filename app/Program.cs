@@ -30,6 +30,10 @@ internal static class Program
             return;
         }
 
+        // --session-screenshot <out.png>: the session window with a made-up remote desktop (no connection)
+        int ss = Array.IndexOf(args, "--session-screenshot");
+        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1]); return; }
+
         // --demo: throwaway settings (random ID, no server, default approval), e.g. for README screenshots
         var cfg = Array.IndexOf(args, "--demo") >= 0 ? Config.Demo() : Config.Load();
 
@@ -159,6 +163,102 @@ internal static class Program
     }
 
     /// <summary>Start normally, draw ~120 frames, save the window as PNG, then exit.</summary>
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
+
+    /// <summary>Saves the session window showing a drawn demo desktop. Nothing real is captured:
+    /// the settings are throwaway, there is no connection, and the window renders itself.</summary>
+    private static void RunSessionScreenshot(string path)
+    {
+        var cfg = Config.Demo();
+        cfg.ViewStyle = "Adjust window";   // show the whole demo desktop
+        string peer = Config.Demo().Id;
+        var form = new SessionForm(cfg, "", 0, false, peer) { StartPosition = FormStartPosition.Manual, Location = new Point(0, 0) };
+        using var desk = DemoDesktop(1440, 900);
+        form.ShowDemo(desk, new[]
+        {
+            ("Remote", "Hi! Can you see my screen?"),
+            ("Me", "Yes, all good. Opening the report now."),
+            ("Remote", "Thanks, the March numbers are in the second sheet."),
+        });
+        form.Show();
+        for (int i = 0; i < 120; i++) { Application.DoEvents(); Thread.Sleep(8); }
+        try
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            using var bmp = new Bitmap(form.Width, form.Height);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                IntPtr hdc = g.GetHdc();
+                try { PrintWindow(form.Handle, hdc, 2 /*PW_RENDERFULLCONTENT*/); } finally { g.ReleaseHdc(hdc); }
+            }
+            bmp.Save(path, ImageFormat.Png);
+        }
+        catch { }
+        try { form.Close(); } catch { }
+        Application.Exit();
+    }
+
+    /// <summary>A made-up desktop for screenshots: wallpaper, taskbar and two app windows.</summary>
+    private static Bitmap DemoDesktop(int w, int h)
+    {
+        var bmp = new Bitmap(w, h);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+        void Text(string t, Font f, RectangleF r, Color c, bool center = false)
+        {
+            using var br = new SolidBrush(c);
+            using var sf = new StringFormat { Alignment = center ? StringAlignment.Center : StringAlignment.Near };
+            g.DrawString(t, f, br, r, sf);
+        }
+        using (var wall = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, w, h),
+            Color.FromArgb(24, 78, 119), Color.FromArgb(52, 160, 164), 35f))
+            g.FillRectangle(wall, 0, 0, w, h);
+        using (var tb = new SolidBrush(Color.FromArgb(230, 32, 32, 36))) g.FillRectangle(tb, 0, h - 48, w, 48);
+        var appColors = new[] { Color.FromArgb(0, 113, 255), Color.FromArgb(16, 185, 129), Color.FromArgb(245, 158, 11), Color.FromArgb(220, 53, 69) };
+        for (int i = 0; i < appColors.Length; i++)
+            Theme.FillRound(g, new Rectangle(w / 2 - 110 + i * 56, h - 40, 32, 32), 7, appColors[i]);
+
+        void Window(Rectangle r, string title, Action<Rectangle> body)
+        {
+            using (var sh = new SolidBrush(Color.FromArgb(60, 0, 0, 0))) g.FillRectangle(sh, r.X + 6, r.Y + 8, r.Width, r.Height);
+            Theme.FillRound(g, r, 8, Color.White);
+            Theme.FillRound(g, new Rectangle(r.X, r.Y, r.Width, 40), 8, Color.FromArgb(243, 244, 246));
+            g.FillRectangle(new SolidBrush(Color.FromArgb(243, 244, 246)), r.X, r.Y + 30, r.Width, 10);
+            using (var f = new Font("Segoe UI", 12f)) Text(title, f, new RectangleF(r.X + 14, r.Y + 9, r.Width - 28, 24), Color.FromArgb(40, 44, 52));
+            body(new Rectangle(r.X + 24, r.Y + 60, r.Width - 48, r.Height - 84));
+        }
+
+        Window(new Rectangle(120, 110, 620, 520), "Sales report", b =>
+        {
+            int[] vals = { 42, 58, 51, 73, 66, 88 };
+            string[] mon = { "Oct", "Nov", "Dec", "Jan", "Feb", "Mar" };
+            int bw = b.Width / vals.Length;
+            using var f = new Font("Segoe UI", 10f);
+            for (int i = 0; i < vals.Length; i++)
+            {
+                int bh = (b.Height - 40) * vals[i] / 100;
+                Theme.FillRound(g, new Rectangle(b.X + i * bw + 14, b.Bottom - 30 - bh, bw - 28, bh), 5,
+                    i == vals.Length - 1 ? Color.FromArgb(16, 185, 129) : Color.FromArgb(0, 113, 255));
+                Text(mon[i], f, new RectangleF(b.X + i * bw, b.Bottom - 24, bw, 22), Color.FromArgb(110, 116, 128), center: true);
+            }
+        });
+        Window(new Rectangle(800, 180, 520, 430), "Notes", b =>
+        {
+            using var f = new Font("Segoe UI", 12f);
+            using var hf = new Font("Segoe UI", 14f, FontStyle.Bold);
+            string[] lines = { "Weekly check-in", "", "• Update the sales report", "• Send the March figures", "• Book the team meeting", "• Back up the shared folder" };
+            int y = b.Y;
+            foreach (var l in lines)
+            {
+                Text(l, l == lines[0] ? hf : f, new RectangleF(b.X, y, b.Width, 30), Color.FromArgb(40, 44, 52));
+                y += l == lines[0] ? 38 : 30;
+            }
+        });
+        return bmp;
+    }
+
     private static void RunScreenshot(Config cfg, string path)
     {
         var form = new MainForm(cfg);
