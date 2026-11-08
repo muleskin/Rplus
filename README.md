@@ -43,6 +43,7 @@ picture of the home screen and exit (add `--page settings` or `--page recent` fo
 real ID or server. `Rplus.exe --session-screenshot <file.png>` does the same for the session
 window, showing a made-up remote desktop instead of a real one; add `--files` for the file transfer
 view with made-up folders on both sides, `--chat` for a close-up of the chat panel, or `--toolbar` for the toolbar.
+`Rplus.exe --accept-screenshot <file.png>` saves the accept window for a made-up visitor.
 
 ## What it does
 
