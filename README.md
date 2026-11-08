@@ -16,6 +16,11 @@ It's one self-contained file for 64-bit Windows, so you don't need to install .N
 Windows Firewall will ask to allow Rplus on your network the first time: allow it on private
 networks so other computers can connect.
 
+To try it out without touching your own settings, run `Rplus.exe --demo`. It opens with a random
+ID, no ID server and no recent sessions, and saves nothing. Add `--screenshot <file.png>` to save a
+picture of the home screen and exit, which is handy for docs or demos that shouldn't show your
+real ID or server.
+
 ## What it does
 
 - **Your desktop:** a device ID made from the network card and a one-time password (6, 8 or 10
