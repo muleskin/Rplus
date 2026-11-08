@@ -49,7 +49,7 @@ internal sealed class FlatButton : Control, IButtonControl
         {
             using var p = Theme.Round(r, Radius);
             using var pen = new Pen(_hover ? Fill : Theme.CardBorder, 1.4f);
-            if (_hover) { using var hb = new SolidBrush(Blend(Fill, Color.White, 0.92f)); g.FillPath(hb, p); }
+            if (_hover) { using var hb = new SolidBrush(Blend(Fill, Theme.Card, 0.92f)); g.FillPath(hb, p); }
             g.DrawPath(pen, p);
             TextRenderer.DrawText(g, Text, Font, r, Fill,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);

@@ -13,6 +13,7 @@ app/publish/
 app/shots/*
 !app/shots/icon.png
 !app/shots/home.png
+!app/shots/home-dark.png
 !app/shots/session.png
 !app/shots/settings.png
 !app/shots/recent.png

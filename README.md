@@ -8,6 +8,10 @@ self-hosted ID/relay server.
 
 ![Rplus home screen](app/shots/home.png)
 
+Rplus follows the Windows light/dark setting, switching as soon as Windows does:
+
+![Rplus home screen in dark mode](app/shots/home-dark.png)
+
 ![Rplus session window with chat open](app/shots/session.png)
 
 <img src="app/shots/chat.png" width="280" alt="Rplus chat panel close-up">

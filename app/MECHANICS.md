@@ -138,6 +138,16 @@ transfer and there's no size limit beyond the disk. The controller numbers each 
   on this PC (temp folders only), checks every byte, and checks that cancelled transfers leave
   nothing behind.
 
+## Light and dark
+
+- Rplus follows the Windows app mode (`AppsUseLightTheme` under
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`; 0 = dark) and switches
+  open windows in place when Windows changes it.
+- `--theme dark` or `--theme light` forces one mode for that run (used for screenshots).
+- Brand colours (blue accent, green OK, red danger) are the same in both modes; the canvas, cards,
+  borders, text and input fields swap palettes (see `Theme.cs`). Title bars, scroll bars and
+  drop-downs use Windows' own dark style.
+
 ## Home screen layout
 
 - "Your Desktop" card: ID, one-time password with refresh/copy, the text "Your desktop can be

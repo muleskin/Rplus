@@ -262,6 +262,7 @@ internal sealed class FilePanel : Panel
         }
         lv.ClientSizeChanged += (_, _) => FitColumns();
         FitColumns();
+        Theme.ThemedHeaders(lv);
         panel.Controls.Add(lv);
         panel.Controls.Add(pathBar);
         panel.Controls.Add(title);
@@ -492,7 +493,7 @@ internal sealed class TransferBar : Panel
             TextRenderer.DrawText(g, _detail, Theme.F(8.5f), new Rectangle(x, 8, w, 20), Theme.TextDim,
                 TextFormatFlags.Right | TextFormatFlags.EndEllipsis);
         var track = new Rectangle(x, 34, w, 10);
-        Theme.FillRound(g, track, 5, Color.FromArgb(232, 236, 242));
+        Theme.FillRound(g, track, 5, Theme.Track);
         if (_fraction > 0)
         {
             var fill = new Rectangle(x, 34, Math.Max(10, (int)(w * _fraction)), 10);

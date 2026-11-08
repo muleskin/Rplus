@@ -12,6 +12,7 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         try { Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); } catch { }
+        Theme.Init(args);   // light or dark, following Windows (--theme dark|light to force one)
 
         string shot = null;
         for (int i = 0; i < args.Length; i++)
@@ -492,7 +493,11 @@ internal static class Program
             var dir = Path.GetDirectoryName(Path.GetFullPath(path));
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             using var bmp = new Bitmap(form.Width, form.Height);
-            form.DrawToBitmap(bmp, new Rectangle(0, 0, form.Width, form.Height));
+            using (var g = Graphics.FromImage(bmp))
+            {
+                IntPtr hdc = g.GetHdc();
+                try { PrintWindow(form.Handle, hdc, 2 /*PW_RENDERFULLCONTENT*/); } finally { g.ReleaseHdc(hdc); }
+            }
             bmp.Save(path, ImageFormat.Png);
         }
         catch { }

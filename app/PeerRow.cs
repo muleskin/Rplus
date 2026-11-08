@@ -46,12 +46,12 @@ internal sealed class PeerRow : Control
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
 
         _favR = new Rectangle(Width - 120, 12, 44, 34);
-        if (_hot == 1) Theme.FillRound(g, _favR, 8, Color.FromArgb(245, 247, 250));
+        if (_hot == 1) Theme.FillRound(g, _favR, 8, Theme.Field);
         TextRenderer.DrawText(g, _p.Favorite ? "" : "", _icon(13f), _favR,
             _p.Favorite ? Color.Goldenrod : Theme.TextDim, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
 
         _delR = new Rectangle(Width - 66, 12, 44, 34);
-        if (_hot == 2) Theme.FillRound(g, _delR, 8, Color.FromArgb(252, 240, 241));
+        if (_hot == 2) Theme.FillRound(g, _delR, 8, Theme.DangerSoft);
         TextRenderer.DrawText(g, "", _icon(12f), _delR,
             _hot == 2 ? Theme.Danger : Theme.TextDim, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
     }
@@ -106,5 +106,6 @@ internal sealed class AcceptForm : Form
         deny.Click += (_, _) => { DialogResult = DialogResult.No; Close(); };
         Controls.AddRange(new Control[] { l1, l2, accept, deny });
         AcceptButton = accept;
+        Theme.Attach(this);
     }
 }

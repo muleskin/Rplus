@@ -55,6 +55,7 @@ internal sealed class SessionForm : Form
         Controls.Add(_toolbar);
 
         Shown += (_, _) => { if (!_demo) StartClient(); };
+        Theme.Attach(this);
     }
 
     private bool _demo;
@@ -344,5 +345,6 @@ internal sealed class PasswordForm : Form
         Controls.Add(ok); Controls.Add(cancel);
         AcceptButton = ok; CancelButton = cancel;
         Shown += (_, _) => { _box.Focus(); _box.SelectionStart = _box.TextLength; _box.SelectionLength = 0; };
+        Theme.Attach(this);
     }
 }

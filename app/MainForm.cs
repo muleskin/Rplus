@@ -92,7 +92,7 @@ internal sealed class MainForm : Form
         {
             AutoSize = false, Dock = DockStyle.Bottom, Height = 26,
             TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(RailW + 16, 0, 0, 0),
-            ForeColor = Theme.TextDim, BackColor = Color.FromArgb(237, 240, 244),
+            ForeColor = Theme.TextDim, BackColor = Theme.StatusBar,
             Font = Theme.F(8.5f),
         };
         Controls.Add(_statusLabel);
@@ -106,6 +106,7 @@ internal sealed class MainForm : Form
         _linkTimer.Start();
         DoLayout();
         ShowNav(Nav.Home);
+        Theme.Attach(this);
     }
 
     // ---------------- side rail ----------------
@@ -133,10 +134,10 @@ internal sealed class MainForm : Form
             var r = new Rectangle(10, y, RailW - 20, 56);
             bool active = it.nav == _nav;
             if (active)
-                using (var ab = new SolidBrush(Color.FromArgb(38, 48, 60)))
+                using (var ab = new SolidBrush(Theme.RailActive))
                 using (var p = Theme.Round(r, 10)) g.FillPath(ab, p);
             else if (i == _railHover)
-                using (var hb = new SolidBrush(Color.FromArgb(33, 41, 52)))
+                using (var hb = new SolidBrush(Theme.RailHover))
                 using (var p = Theme.Round(r, 10)) g.FillPath(hb, p);
 
             if (active)
@@ -265,7 +266,7 @@ internal sealed class MainForm : Form
         TextRenderer.DrawText(g, "One-time password", Theme.F(8.5f, FontStyle.Bold),
             new Rectangle(lx, y, lw, 18), Theme.TextDim, TextFormatFlags.Left); y += 20;
         var pwField = new Rectangle(lx, y, lw, 44);
-        Theme.FillRound(g, pwField, 9, Color.FromArgb(245, 247, 250));
+        Theme.FillRound(g, pwField, 9, Theme.Field);
         using (var pen = new Pen(Theme.CardBorder)) { using var p = Theme.Round(pwField, 9); g.DrawPath(pen, p); }
         TextRenderer.DrawText(g, _oneTimePw, new Font("Consolas", 16f, FontStyle.Bold),
             new Rectangle(pwField.X + 14, pwField.Y, 150, pwField.Height), Theme.TextMain,
@@ -311,7 +312,7 @@ internal sealed class MainForm : Form
             new Rectangle(rx, ry, rw, 18), Theme.TextDim, TextFormatFlags.Left); ry += 22;
 
         _idFieldRect = new Rectangle(rx, ry, rw, 48);
-        Theme.FillRound(g, _idFieldRect, 10, Color.White);
+        Theme.FillRound(g, _idFieldRect, 10, Theme.Input);
         using (var pen = new Pen(Theme.Accent, 1.4f)) { using var p = Theme.Round(_idFieldRect, 10); g.DrawPath(pen, p); }
         _remoteId.Location = new Point(_idFieldRect.X + 14, _idFieldRect.Y + (_idFieldRect.Height - _remoteId.Height) / 2);
         _remoteId.Width = _idFieldRect.Width - 28;
@@ -331,7 +332,7 @@ internal sealed class MainForm : Form
         foreach (var p in recents)
         {
             var row = new Rectangle(rx, ry, rw, 36);
-            Theme.FillRound(g, row, 8, Color.FromArgb(247, 249, 251));
+            Theme.FillRound(g, row, 8, Theme.Row);
             TextRenderer.DrawText(g, PlatGlyph(p.Platform), IconFont(11f),
                 new Rectangle(row.X + 10, row.Y, 22, row.Height), Theme.Accent, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
             TextRenderer.DrawText(g, string.IsNullOrEmpty(p.Alias) ? FormatId(p.Id) : p.Alias,
