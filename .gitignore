@@ -12,3 +12,4 @@ app/publish/
 # test output (holds server addresses / device IDs)
 app/shots/*
 !app/shots/icon.png
+!app/shots/home.png

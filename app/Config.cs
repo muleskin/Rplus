@@ -107,6 +107,15 @@ internal sealed class Config
         return c;
     }
 
+    /// <summary>Settings that are never saved: a random ID, no ID/relay server, default approval.</summary>
+    public static Config Demo()
+    {
+        var c = new Config { Ephemeral = true };
+        c.Id = RandomId();
+        c.RuntimeOneTimePassword = c.NewOneTimePassword();
+        return c;
+    }
+
     public void Save()
     {
         if (Ephemeral) return;

@@ -30,7 +30,8 @@ internal static class Program
             return;
         }
 
-        var cfg = Config.Load();
+        // --demo: throwaway settings (random ID, no server, default approval), e.g. for README screenshots
+        var cfg = Array.IndexOf(args, "--demo") >= 0 ? Config.Demo() : Config.Load();
 
         if (shot != null) { RunScreenshot(cfg, shot); return; }
 

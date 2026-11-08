@@ -6,6 +6,8 @@ Remote desktop for Windows. Share your screen with an ID and a one-time password
 another computer running Rplus — on the same network, by direct IP, or through your own
 self-hosted ID/relay server.
 
+![Rplus home screen](app/shots/home.png)
+
 ## Download
 
 Get `Rplus.exe` from the [latest release](https://github.com/muleskin/Rplus/releases/latest).
