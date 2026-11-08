@@ -31,7 +31,7 @@ ID, no ID server and no recent sessions, and saves nothing. Add `--screenshot <f
 picture of the home screen and exit (add `--page settings` or `--page recent` for those pages), which is handy for docs or demos that shouldn't show your
 real ID or server. `Rplus.exe --session-screenshot <file.png>` does the same for the session
 window, showing a made-up remote desktop instead of a real one; add `--files` for the file transfer
-view with made-up folders on both sides.
+view with made-up folders on both sides, or `--chat` for a close-up of the chat panel.
 
 ## What it does
 
