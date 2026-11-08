@@ -39,13 +39,18 @@
     { "name": "ratio max", "group": "view", "value": 40 },
     { "name": "jpeg quality formula", "group": "view", "value": "clamp(round(30+40*ratio),10,95)", "estimated": true },
 
-    { "name": "direct session port", "group": "network", "value": 21118, "estimated": true },
+    { "name": "direct session port", "group": "network", "value": 21118 },
+    { "name": "direct port rule", "group": "network", "value": "setting if > 0, else 21118" },
     { "name": "id server port", "group": "server", "value": 21116 },
-    { "name": "relay port rule", "group": "server", "value": "ID server port + 1" },
     { "name": "relay server port", "group": "server", "value": 21117 },
+    { "name": "relay port rule", "group": "server", "value": "ID server port + 1" },
     { "name": "relay choice order", "group": "server", "value": "relay-server setting, suggested relay, ID server port+1" },
-    { "name": "register interval", "group": "server", "value": 12, "unit": "s", "estimated": true },
-    { "name": "relay answer timeout", "group": "server", "value": 10, "unit": "s", "estimated": true },
+    { "name": "register interval", "group": "server", "value": 15000, "unit": "ms" },
+    { "name": "register answer wait start", "group": "server", "value": 3000, "unit": "ms" },
+    { "name": "register answer wait step", "group": "server", "value": 3000, "unit": "ms" },
+    { "name": "register answer wait max", "group": "server", "value": 30000, "unit": "ms" },
+    { "name": "register missed answers limit", "group": "server", "value": 3 },
+    { "name": "relay answer timeout", "group": "server", "value": 10000, "unit": "ms", "estimated": true },
     { "name": "server key setting", "group": "server", "value": "key" },
     { "name": "not ready message", "group": "server", "value": "Not ready. Please check your connection" }
   ]

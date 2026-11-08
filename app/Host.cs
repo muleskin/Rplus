@@ -29,16 +29,21 @@ internal sealed class Host
 
     public Host(Config cfg) => _cfg = cfg;
 
+    /// <summary>Only take sessions through the ID server's relay (used by the self-test).</summary>
+    public bool RelayOnly;
+
     public void Start()
     {
         if (_running) return;
         _running = true;
-        _listener = new TcpListener(IPAddress.Any, _cfg.DirectPort);
+        if (RelayOnly) { OnStatus?.Invoke("Ready (relay only)."); return; }
+        int port = _cfg.ListenPort();
+        _listener = new TcpListener(IPAddress.Any, port);
         try { _listener.Start(); }
-        catch (Exception e) { _listener = null; OnStatus?.Invoke($"Direct port {_cfg.DirectPort} unavailable ({e.Message}); ID server connections still work."); return; }
+        catch (Exception e) { _listener = null; OnStatus?.Invoke($"Direct port {port} unavailable ({e.Message}); ID server connections still work."); return; }
         _acceptThread = new Thread(AcceptLoop) { IsBackground = true, Name = "Rplus-host" };
         _acceptThread.Start();
-        OnStatus?.Invoke($"Ready on port {_cfg.DirectPort}. Share this ID and password.");
+        OnStatus?.Invoke($"Ready on port {port}. Share this ID and password.");
     }
 
     public void Stop()

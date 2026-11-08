@@ -99,12 +99,34 @@ internal sealed class SettingsPanel : Panel
 
         Controls.Add(new Label
         {
-            Text = "Your own ID/relay server, e.g. 203.0.113.5:21116 and 203.0.113.5:21117. Leave the relay " +
-                   "empty to use the ID server's address on port 21117. Both computers need Rplus and the same server.",
+            Text = "Your own ID/relay server, e.g. ID 203.0.113.5:21116 and relay 203.0.113.5:21117. Leave the relay " +
+                   "empty to use the ID server's port + 1. Both computers need Rplus and the same server.",
             Font = Theme.F(8.5f), ForeColor = Theme.TextDim, AutoSize = false,
             Location = new Point(210, _y - 4), Size = new Size(340, 48), BackColor = Color.Transparent,
         });
         _y += 50;
+
+        // Warn when the two ports look swapped (ID server 21116, relay = ID port + 1 = 21117).
+        var swapWarn = new Label
+        {
+            Font = Theme.F(8.5f, FontStyle.Bold), ForeColor = Theme.Danger, AutoSize = false,
+            Location = new Point(210, _y - 6), Size = new Size(340, 34), BackColor = Color.Transparent,
+        };
+        Controls.Add(swapWarn);
+        _y += 30;
+        void CheckSwap()
+        {
+            var (_, ip) = Rv.Split(idsrv.Text, Rv.IdPort);
+            var (rh, rp) = Rv.Split(relay.Text, Rv.RelayPort);
+            bool idLooksRelay = !string.IsNullOrWhiteSpace(idsrv.Text) && ip == Rv.RelayPort;
+            bool relayLooksId = !string.IsNullOrWhiteSpace(relay.Text) && rp == Rv.IdPort;
+            swapWarn.Text = idLooksRelay || relayLooksId
+                ? "These look swapped: the ID server normally uses port 21116 and the relay 21117."
+                : "";
+        }
+        idsrv.TextChanged += (_, _) => CheckSwap();
+        relay.TextChanged += (_, _) => CheckSwap();
+        CheckSwap();
 
         var wl = Check("Only allow connections from the IP whitelist below", _cfg.UseIpWhitelist);
         Row("IP whitelist", wl);

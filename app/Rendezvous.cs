@@ -18,8 +18,13 @@ namespace Rplus;
 internal static class Rv
 {
     public const int IdPort = 21116;              // added when the ID server has no port
-    public const int RelayPort = IdPort + 1;      // ID server port + 1; used for a relay entered without a port
-    public const int RegisterIntervalMs = 12000;  // estimated (REG_INTERVAL not located in the mediator code)
+    public const int RelayPort = 21117;           // added to a relay address without a port (MECHANICS.md)
+    public const int DirectPort = 21118;          // direct-access-port default when unset or <= 0
+    public const int RegisterIntervalMs = 15000;  // re-register every 15 s
+    public const int RegTimeoutMinMs = 3000;      // first wait for an answer
+    public const int RegTimeoutStepMs = 3000;     // added after each missed answer
+    public const int RegTimeoutMaxMs = 30000;     // the wait stops growing here
+    public const int RegMaxFails = 3;             // more misses than this in a row → not ready
     public const int RelayAnswerTimeoutMs = 10000;
     public const string Version = "rplus-1.0";
 
@@ -275,6 +280,78 @@ internal sealed class ServerLink
 
     public void Stop() { _run = false; try { _udp?.Close(); } catch { } }
 
+    public const int ProbeWaitMs = Rv.RegTimeoutMinMs;   // each candidate gets the first answer wait (3000 ms)
+
+    /// <summary>Called when the ID server answered at a different address than the one typed in
+    /// (for example the ID and relay fields were swapped). The settings were already corrected.</summary>
+    public Action<string> OnServerFixed;
+
+    private static IPEndPoint Resolve(string hostPort)
+    {
+        var (h, p) = Rv.Split(hostPort, Rv.IdPort);
+        var addr = Dns.GetHostAddresses(h).First(a => a.AddressFamily == AddressFamily.InterNetwork);
+        return new IPEndPoint(addr, p);
+    }
+
+    /// <summary>Addresses to try as the ID server, in order: what was typed, the relay field
+    /// (in case the two were swapped), then the same host on the default ID port 21116.</summary>
+    private List<string> Candidates()
+    {
+        var list = new List<string>();
+        void Add(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return;
+            var (h, p) = Rv.Split(s, Rv.IdPort);
+            var v = $"{h}:{p}";
+            if (!string.IsNullOrEmpty(h) && !list.Contains(v)) list.Add(v);
+        }
+        Add(_cfg.IdServer);
+        Add(_cfg.RelayServer);
+        var (ih, _) = Rv.Split(_cfg.IdServer, Rv.IdPort);
+        if (!string.IsNullOrEmpty(ih)) Add($"{ih}:{Rv.IdPort}");
+        return list;
+    }
+
+    /// <summary>Send RegisterPeer to each candidate until one answers. Returns the one that did.</summary>
+    private volatile bool _probing;
+
+    private string Probe()
+    {
+        _probing = true;
+        try { return ProbeInner(); } finally { _probing = false; }
+    }
+
+    private string ProbeInner()
+    {
+        foreach (var cand in Candidates())
+        {
+            if (!_run) return null;
+            try { _server = Resolve(cand); } catch { continue; }
+            long before = Interlocked.Read(ref _lastReply);
+            SendRegisterPeer();
+            for (int i = 0; i < ProbeWaitMs / 100 && _run; i++)
+            {
+                Thread.Sleep(100);
+                if (Interlocked.Read(ref _lastReply) != before) return cand;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Make the settings match the address that answered: if it was the relay field,
+    /// the two fields were swapped, so swap them back.</summary>
+    private void ApplyFix(string working, string typed)
+    {
+        var (rh, rp) = Rv.Split(_cfg.RelayServer, Rv.IdPort);
+        bool fromRelayField = !string.IsNullOrEmpty(rh) && $"{rh}:{rp}" == working;
+        if (fromRelayField) _cfg.RelayServer = _cfg.IdServer.Trim();
+        _cfg.IdServer = working;
+        _cfg.Save();
+        OnServerFixed?.Invoke(fromRelayField
+            ? $"Your ID server and relay server were swapped ({typed} is the relay). Fixed: ID server {working}, relay {_cfg.RelayServer}."
+            : $"Your ID server didn't answer at {typed}; it answers at {working}, so Settings now use that.");
+    }
+
     private void Loop(string idSrv)
     {
         OnState?.Invoke("Connecting to your ID server…", null);
@@ -282,25 +359,47 @@ internal sealed class ServerLink
         {
             try
             {
-                var (h, p) = Rv.Split(idSrv, Rv.IdPort);
-                var addr = Dns.GetHostAddresses(h).First(a => a.AddressFamily == AddressFamily.InterNetwork);
-                _server = new IPEndPoint(addr, p);
                 _udp = new UdpClient(0);
                 try { _udp.Client.IOControl(-1744830452 /*SIO_UDP_CONNRESET*/, new byte[] { 0 }, null); } catch { }
                 new Thread(ReceiveLoop) { IsBackground = true, Name = "Rplus-rendezvous-rx" }.Start();
-                long nextBad = Environment.TickCount64 + 6000;
+
+                string working = Probe();
+                if (working == null)
+                {
+                    OnState?.Invoke($"Not ready. No answer from the ID server at {idSrv}. Check the address (the ID server normally uses port 21116, the relay 21117) and that the server is running.", false);
+                    for (int i = 0; i < 40 && _run; i++) Thread.Sleep(250);   // retry in 10 s
+                    continue;
+                }
+                if (working != idSrv) { ApplyFix(working, idSrv); idSrv = working; }
+                _server = Resolve(working);
+                // Register timer: re-register every 15 s; an answer is
+                // awaited for reg_timeout, which starts at 3 s and grows by 3 s per miss up to 30 s;
+                // more than 3 misses in a row means the server isn't reachable.
+                long regTimeout = Rv.RegTimeoutMinMs;
+                int fails = 0;
                 while (_run)
                 {
+                    long sent = Environment.TickCount64;
+                    long before = Interlocked.Read(ref _lastReply);
                     SendRegisterPeer();
-                    for (int i = 0; i < Rv.RegisterIntervalMs / 250 && _run; i++)
+                    bool answered = false;
+                    while (_run && Environment.TickCount64 - sent < regTimeout)
                     {
-                        Thread.Sleep(250);
-                        if (Environment.TickCount64 > nextBad && Environment.TickCount64 - Interlocked.Read(ref _lastReply) > Rv.RegisterIntervalMs * 2 + 6000)
-                        {
-                            OnState?.Invoke("Not ready. Please check your connection to the ID server", false);
-                            nextBad = Environment.TickCount64 + Rv.RegisterIntervalMs;
-                        }
+                        Thread.Sleep(100);
+                        if (Interlocked.Read(ref _lastReply) != before) { answered = true; break; }
                     }
+                    if (!_run) break;
+                    if (answered)
+                    {
+                        regTimeout = Rv.RegTimeoutMinMs;
+                        fails = 0;
+                        while (_run && Environment.TickCount64 - sent < Rv.RegisterIntervalMs) Thread.Sleep(250);
+                        continue;
+                    }
+                    if (regTimeout < Rv.RegTimeoutMaxMs) regTimeout += Rv.RegTimeoutStepMs;
+                    fails++;
+                    if (fails > Rv.RegMaxFails)
+                        OnState?.Invoke($"Not ready. The ID server at {idSrv} stopped answering. Please check your connection.", false);
                 }
             }
             catch (Exception e)
@@ -332,6 +431,7 @@ internal sealed class ServerLink
             {
                 case Rv.F_RegisterPeerResponse:
                     Interlocked.Exchange(ref _lastReply, Environment.TickCount64);
+                    if (_probing) break;   // only finding which address answers; registration follows
                     if (body.Int(2) != 0) SendRegisterPk();
                     else OnState?.Invoke($"Ready — reachable by ID through {Rv.IdServerOf(_cfg)}", true);
                     break;

@@ -53,7 +53,10 @@ internal sealed class Config
 
     public int Fps() => Math.Clamp(CustomFps, FpsMin, FpsMax);
 
-    public int DirectPort { get; set; } = 21118;                // direct-access-port
+    public int DirectPort { get; set; } = Rv.DirectPort;        // direct-access-port
+
+    /// <summary>The saved port if it is above 0, otherwise 21118.</summary>
+    public int ListenPort() => DirectPort > 0 ? DirectPort : Rv.DirectPort;
     public string RelayServer { get; set; } = "";
     public string IdServer { get; set; } = "";
     public string ServerKey { get; set; } = "";                 // "Key" of the ID/relay server

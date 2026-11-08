@@ -62,16 +62,19 @@ internal static class Program
         var hostCfg = Config.Temporary(idServer, relay, key);
         var host = new Host(hostCfg) { OnStatus = s => L("host: " + s) };
         host.ApproveConnection = _ => true;
-        hostCfg.DirectPort = 0; // don't need the direct listener
+        host.RelayOnly = true;  // don't need the direct listener
         host.Start();
         var ready = new ManualResetEventSlim();
         var link = new ServerLink(hostCfg, s => { L("host: relay stream arrived"); host.ServeRelay(s); });
         link.OnState = (t, ok) => { L($"link: {t} ({ok})"); if (ok == true) ready.Set(); };
+        link.OnServerFixed = m => L("link fixed: " + m);
         link.Start();
         L($"host id {hostCfg.Id}, server {Rv.IdServerOf(hostCfg)}, relay {Rv.RelayOf(hostCfg)}");
         if (!ready.Wait(15000)) { L("RESULT: FAIL — host never registered"); link.Stop(); return log.ToString(); }
 
-        var cliCfg = Config.Temporary(idServer, relay, key);
+        // The app shares one config, so the controller sees any correction the link made.
+        var cliCfg = Config.Temporary(hostCfg.IdServer, hostCfg.RelayServer, key);
+        L($"client uses server {Rv.IdServerOf(cliCfg)}, relay {Rv.RelayOf(cliCfg)}");
         var done = new ManualResetEventSlim();
         bool ok2 = false;
         var client = new Client

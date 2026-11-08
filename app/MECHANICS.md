@@ -15,7 +15,7 @@ these values is `mechanics.json`.
 
 | Thing | Value |
 |---|---|
-| Device ID | `(mac[2] & 0x1F) << 24 \| mac[3] << 16 \| mac[4] << 8 \| mac[5]` as decimal, from the first network card's MAC address (GetAdaptersAddresses) |
+| Device ID | `(mac[2..5] as big-endian u32) & 0x1FFFFFFF`, i.e. `(mac[2]&0x1F)<<24 \| mac[3]<<16 \| mac[4]<<8 \| mac[5]`, as decimal, from the first network card's MAC address (GetAdaptersAddresses) |
 | ID kept once made | stored in config |
 | No usable MAC | random 9-digit number (**estimated**) |
 | ID taken on the server (UUID_MISMATCH) | Rplus picks a random new ID |
@@ -39,10 +39,10 @@ these values is `mechanics.json`.
 
 | Option | Default | Allowed | Rplus |
 |---|---|---|---|
-| `view_style` | **original** | adaptive | default "Original size"; "Adjust window" = adaptive |
-| `image_quality` | **balanced** | best, low, custom | same |
-| `custom_image_quality` | **50** | 10 … 4095 | slider 10 … 2000 (above 2000 the ratio is capped, see below) |
-| `custom-fps` | **30** | 5 … 120 | frame-rate slider, sent to the sharing side |
+| `view_style` | original | adaptive | "Original size" default; "Adjust window" = adaptive |
+| `image_quality` | balanced | best, low, custom | same |
+| `custom_image_quality` | 50 | 10 … 4095 | value clamped to 10 … 4095; slider 10 … 2000 (the ratio caps above 2000) |
+| `custom-fps` | 30 | 5 … 120 | frame-rate slider, sent to the sharing side |
 
 Quality → bitrate ratio:
 
@@ -54,14 +54,14 @@ Quality → bitrate ratio:
 | custom q | clamp(2 × q / 100, 0.2, 40) |
 
 Rplus sends JPEG frames, so the ratio becomes a JPEG quality:
-`clamp(round(30 + 40 × ratio), 10, 95)`: best 90, balanced 57, low 50, custom 50 → 70.
-The default frame period is 1/30 s (30 fps).
+`clamp(round(30 + 40 × ratio), 10, 95)` (**estimated** mapping): best 90, balanced 57, low 50.
 
 ## Direct connection
 
 | Thing | Value |
 |---|---|
-| Direct port | 21118 (`direct-access-port`, **estimated** default) |
+| Direct port | `direct-access-port` if it is a number above 0, else 21118 |
+| Address typed without a port | 21118 is added when connecting directly |
 
 ## Own ID / relay server (self-hosted hbbs + hbbr)
 
@@ -70,25 +70,32 @@ The default frame period is 1/30 s (30 fps).
 | ID server without a port | ":21116" is added |
 | ID server list | `rendezvous-servers` (Rplus has no public fallback server) |
 | Relay choice | `relay-server` setting → relay suggested by the other side → ID server with port + 1 |
-| Port + 1 rule | "host:port" → "host:(port+1)" (21116 → 21117) |
-| Relay entered without a port | 21117 (ID default + 1) |
-| Register interval | 12 s — **estimated** |
+| Port + 1 rule | "host:port" → "host:(port+1)" |
+| Relay without a port | ":21117" is added |
+| Re-register interval | 15000 ms |
+| First wait for an answer | 3000 ms |
+| Wait growth | +3000 ms per missed answer, at most 30000 ms |
+| Missed answers | more than 3 in a row → "Not ready" |
 | Wait for relay answer | 10 s — **estimated** |
 | Server key | `key` setting, sent as licence_key |
 | Status text | "Not ready. Please check your connection" |
+
+**Swapped ID/relay fields:** if the ID server doesn't answer within the first 3000 ms wait,
+Rplus tries the relay field's address and then the same host on 21116. The one that answers
+becomes the ID server, the two fields are swapped back, and the person is told. Settings also
+warns when the ID port is 21117 or the relay port is 21116.
 
 Message flow (RendezvousMessage protobuf; UDP = raw datagram, TCP = BytesCodec frame whose
 1–4 byte little-endian header holds `len<<2 | (headerBytes-1)`), verified live against a
 self-hosted server:
 
-- Host: UDP `register_peer`(6){id=1, serial=2} every interval; on `register_peer_response`(7)
-  with request_pk(2) → `register_pk`(15){id=1, uuid=2, pk=3}; `register_pk_response`(16)
-  result(1): 0 OK, 2 UUID mismatch, 4 too frequent.
+- Host: UDP `register_peer`(6){id=1, serial=2}; on `register_peer_response`(7) with
+  request_pk(2) → `register_pk`(15){id=1, uuid=2, pk=3}; `register_pk_response`(16) result(1):
+  0 OK, 2 UUID mismatch, 4 too frequent.
 - Controller: TCP `request_relay`(18){id=1, uuid=2, relay_server=4, licence_key=6}; waits for
   `relay_response`(19){relay_server=3, refuse_reason=6, version=7}.
-- Host answers the forwarded `request_relay` with TCP `relay_response`{socket_addr=1, uuid=2,
-  relay_server=3, id=4, version=7 "rplus-1.0"}; both join the relay with `request_relay`{uuid,
-  licence_key}; the relay pipes bytes between them.
+- Host answers with TCP `relay_response`{socket_addr=1, uuid=2, relay_server=3, id=4,
+  version=7 "rplus-1.0"}; both join the relay with `request_relay`{uuid, licence_key}.
 
 ## Session protocol
 

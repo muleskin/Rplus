@@ -48,6 +48,12 @@ internal sealed class MainForm : Form
         _link = new ServerLink(_cfg, s => _host.ServeRelay(s));
         _link.OnState = (t, ok) => OnUi(() => { _serverText = t; _serverOk = ok; _home.Invalidate(); });
         _link.OnIdChanged = () => OnUi(() => { _linkSig = LinkSignature(); _home.Invalidate(); });
+        _link.OnServerFixed = msg => OnUi(() =>
+        {
+            _linkSig = LinkSignature();     // the running link already uses the corrected address
+            SetStatus(msg);
+            RefreshSettingsPage();
+        });
         _link.Start();
         _home?.Invalidate();
     }
@@ -389,6 +395,16 @@ internal sealed class MainForm : Form
         _settingsHost = new DoubleBufferedPanel { BackColor = Theme.Canvas, Visible = false, AutoScroll = true };
     }
     private bool _settingsBuilt;
+
+    /// <summary>Rebuild the Settings page so it shows values changed outside it.</summary>
+    private void RefreshSettingsPage()
+    {
+        if (!_settingsBuilt) return;
+        foreach (Control c in _settingsHost.Controls.Cast<Control>().ToList()) { _settingsHost.Controls.Remove(c); c.Dispose(); }
+        _settingsBuilt = false;
+        if (_nav == Nav.Settings) BuildSettingsContent();
+    }
+
     private void BuildSettingsContent()
     {
         if (_settingsBuilt) return;
@@ -396,9 +412,16 @@ internal sealed class MainForm : Form
         var panel = new SettingsPanel(_cfg, IconFont) { Location = new Point(28, 20) };
         panel.Changed = () => { _host.Quality = QualityNumber(); _host.Fps = _cfg.Fps(); };
         _settingsHost.Controls.Add(panel);
-        _settingsHost.Resize += (_, _) => panel.Width = Math.Max(480, _settingsHost.Width - 80);
+        _settingsPanel = panel;
+        if (!_settingsResizeHooked)
+        {
+            _settingsResizeHooked = true;
+            _settingsHost.Resize += (_, _) => { if (_settingsPanel != null && !_settingsPanel.IsDisposed) _settingsPanel.Width = Math.Max(480, _settingsHost.Width - 80); };
+        }
         panel.Width = Math.Max(480, _settingsHost.Width - 80);
     }
+    private SettingsPanel _settingsPanel;
+    private bool _settingsResizeHooked;
 
     // ---------------- connect ----------------
     private void DoConnect(bool fileMode, string hostOverride = null, string idOverride = null)
@@ -425,7 +448,7 @@ internal sealed class MainForm : Form
         }
 
         string host = hostOverride ?? compact;
-        int port = _cfg.DirectPort;
+        int port = _cfg.ListenPort();
         if (host.Contains(':'))
         {
             var parts = host.Split(':');
