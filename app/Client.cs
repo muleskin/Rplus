@@ -21,7 +21,7 @@ internal sealed class Client
     public Action<bool, bool> OnAuthRequest;          // password accepted?, accept window shown?
     public Action<bool, bool, bool, bool> OnPerms; // keyboard, clipboard, file, audio
     public Action<string, List<Host.FileEntry>> OnFileList;
-    public Action<string, byte[]> OnFileData;    // name, bytes
+    public Action<Transfer> OnTransfer;          // progress and the end of each file transfer (any thread)
     public Action OnClosed;
 
     public bool Connected => _running && _t is { Connected: true };
@@ -67,16 +67,158 @@ internal sealed class Client
         => _t?.Send(Msg.Control(MsgType.Input, new { kind, x, y, button, delta, key, down, text = text ?? "" }));
 
     public void RequestFileList(string path) => _t?.Send(Msg.Control(MsgType.FileList, new { path }));
-    public void RequestFile(string path) => _t?.Send(Msg.Control(MsgType.FileGet, new { path }));
-    public void PutFile(string remotePath, byte[] data)
+    // ---------------- file transfer ----------------
+
+    /// <summary>One transfer's state, as passed to OnTransfer.</summary>
+    public sealed class Transfer
     {
-        var head = JsonSerializer.SerializeToUtf8Bytes(new { path = remotePath });
-        var blob = new byte[4 + head.Length + data.Length];
-        blob[0] = (byte)(head.Length >> 24); blob[1] = (byte)(head.Length >> 16);
-        blob[2] = (byte)(head.Length >> 8); blob[3] = (byte)head.Length;
-        Array.Copy(head, 0, blob, 4, head.Length);
-        Array.Copy(data, 0, blob, 4 + head.Length, data.Length);
-        _t?.Send(new Msg { Type = MsgType.FilePut, Blob = blob });
+        public int Id;
+        public bool Upload;
+        public string Name = "";
+        public long Done, Total;
+        public bool Finished, Ok;
+        public string Error = "";
+        public long LastReportMs;
+    }
+
+    private int _nextXfer;
+    private readonly Dictionary<int, Transfer> _xfers = new();
+    private readonly Dictionary<int, CancellationTokenSource> _uploadCancel = new();
+    private readonly Dictionary<int, string> _downloadDir = new();
+    private readonly FileReceiver _downloads = new();
+
+    /// <summary>Sends a local file to remotePath on the other computer. Returns the transfer id.</summary>
+    public int Upload(string localPath, string remotePath)
+    {
+        var x = NewTransfer(true, Path.GetFileName(localPath));
+        var cts = new CancellationTokenSource();
+        lock (_xfers) _uploadCancel[x.Id] = cts;
+        var t = _t;
+        Task.Run(() =>
+        {
+            string err = t == null ? "Not connected"
+                : FileXfer.Send(t, x.Id, localPath, remotePath, cts.Token, (d, total) => Progress(x, d, total));
+            if (err != "") Finish(x.Id, false, err);
+            // otherwise the other side answers with XferResult once the file is saved
+        });
+        return x.Id;
+    }
+
+    /// <summary>Fetches remotePath from the other computer into localDir. Returns the transfer id.</summary>
+    public int Download(string remotePath, string localDir)
+    {
+        var x = NewTransfer(false, Path.GetFileName(remotePath));
+        lock (_xfers) _downloadDir[x.Id] = localDir;
+        _t?.Send(Msg.Control(MsgType.FileGet, new { path = remotePath, id = x.Id }));
+        return x.Id;
+    }
+
+    public void CancelTransfer(int id)
+    {
+        CancellationTokenSource cts;
+        lock (_xfers) _uploadCancel.TryGetValue(id, out cts);
+        if (cts != null) { try { cts.Cancel(); } catch { } }   // the send loop tells the other side
+        else _t?.Send(Msg.Control(MsgType.XferCancel, new FileXfer.IdBody { id = id }));   // a download: ask them to stop
+    }
+
+    private Transfer NewTransfer(bool upload, string name)
+    {
+        var x = new Transfer { Id = Interlocked.Increment(ref _nextXfer), Upload = upload, Name = name };
+        lock (_xfers) _xfers[x.Id] = x;
+        OnTransfer?.Invoke(x);
+        return x;
+    }
+
+    private void Progress(Transfer x, long done, long total)
+    {
+        x.Done = done; x.Total = total;
+        long now = Environment.TickCount64;
+        if (done < total && now - x.LastReportMs < 100) return;   // about ten updates a second
+        x.LastReportMs = now;
+        OnTransfer?.Invoke(x);
+    }
+
+    private void Finish(int id, bool ok, string error)
+    {
+        Transfer x;
+        CancellationTokenSource cts;
+        lock (_xfers)
+        {
+            if (!_xfers.TryGetValue(id, out x) || x.Finished) return;   // only the first answer counts
+            x.Finished = true; x.Ok = ok; x.Error = error ?? "";
+            _xfers.Remove(id);
+            _uploadCancel.Remove(id, out cts);
+            _downloadDir.Remove(id);
+        }
+        cts?.Dispose();
+        OnTransfer?.Invoke(x);
+    }
+
+    private void OnXferStart(Msg m)
+    {
+        FileXfer.StartBody b;
+        try { b = m.Body<FileXfer.StartBody>(); } catch { return; }
+        if (b == null) return;
+        Transfer x; string dir;
+        lock (_xfers) { _xfers.TryGetValue(b.id, out x); _downloadDir.TryGetValue(b.id, out dir); }
+        if (x == null || dir == null) return;
+        x.Name = b.name; x.Total = b.size;
+        string err = _downloads.Start(b.id, b.name, Path.Combine(dir, Path.GetFileName(b.name)), b.size);
+        if (err != "")
+        {
+            _t?.Send(Msg.Control(MsgType.XferCancel, new FileXfer.IdBody { id = b.id }));
+            Finish(b.id, false, err);
+        }
+        else Progress(x, 0, b.size);
+    }
+
+    private void OnXferChunk(Msg m)
+    {
+        var r = _downloads.Chunk(m.Blob);
+        if (r == null) return;
+        Transfer x;
+        lock (_xfers) _xfers.TryGetValue(FileXfer.ChunkId(m.Blob), out x);
+        if (x != null) Progress(x, r.Value.got, r.Value.size);
+    }
+
+    private void OnXferEnd(Msg m)
+    {
+        FileXfer.EndBody b;
+        try { b = m.Body<FileXfer.EndBody>(); } catch { return; }
+        if (b == null) return;
+        string err = _downloads.Finish(b.id, b.ok, b.error);
+        Finish(b.id, err == "", err);
+    }
+
+    private void OnXferResult(Msg m)
+    {
+        try { var b = m.Body<FileXfer.EndBody>(); if (b != null) Finish(b.id, b.ok, b.error); } catch { }
+    }
+
+    private void OnXferCancel(Msg m)
+    {
+        // The other side refused an upload: stop sending. Its XferResult says why.
+        try
+        {
+            var b = m.Body<FileXfer.IdBody>();
+            CancellationTokenSource cts = null;
+            if (b != null) lock (_xfers) _uploadCancel.TryGetValue(b.id, out cts);
+            cts?.Cancel();
+        }
+        catch { }
+    }
+
+    /// <summary>The connection ended: nothing in flight can finish.</summary>
+    private void EndAllTransfers()
+    {
+        List<int> ids;
+        lock (_xfers)
+        {
+            ids = _xfers.Keys.ToList();
+            foreach (var c in _uploadCancel.Values) { try { c.Cancel(); } catch { } }
+        }
+        _downloads.AbortAll();
+        foreach (var id in ids) Finish(id, false, "Connection lost");
     }
 
     public void Close()
@@ -124,20 +266,16 @@ internal sealed class Client
                 case MsgType.FileListReply:
                     try { var fl = m.Body<FileListReply>(); OnFileList?.Invoke(fl.path, fl.entries); } catch { }
                     break;
-                case MsgType.FileData:
-                    try
-                    {
-                        int hl = (m.Blob[0] << 24) | (m.Blob[1] << 16) | (m.Blob[2] << 8) | m.Blob[3];
-                        var h = JsonSerializer.Deserialize<FileDataHead>(m.Blob.AsSpan(4, hl));
-                        var data = m.Blob.AsSpan(4 + hl).ToArray();
-                        OnFileData?.Invoke(h.name, data);
-                    }
-                    catch { }
-                    break;
+                case MsgType.XferStart: OnXferStart(m); break;
+                case MsgType.XferChunk: OnXferChunk(m); break;
+                case MsgType.XferEnd: OnXferEnd(m); break;
+                case MsgType.XferResult: OnXferResult(m); break;
+                case MsgType.XferCancel: OnXferCancel(m); break;
             }
         }
         bool wasRunning = _running;
         _running = false;
+        EndAllTransfers();
         if (wasRunning && !_gotAnswer)
             OnStatus?.Invoke("The other side closed the connection without answering as Rplus.");
         else OnClosed?.Invoke();
@@ -147,5 +285,4 @@ internal sealed class Client
     private sealed class AuthRes { public bool ok { get; set; } public string reason { get; set; } public bool retry { get; set; } }
     private sealed class PermsBody { public bool keyboard { get; set; } public bool clipboard { get; set; } public bool file { get; set; } public bool audio { get; set; } }
     private sealed class FileListReply { public string path { get; set; } public List<Host.FileEntry> entries { get; set; } = new(); }
-    private sealed class FileDataHead { public string name { get; set; } public int size { get; set; } }
 }

@@ -60,6 +60,10 @@ internal sealed class SessionForm : Form
     private bool _demo;
     private ToolButton _lastTool, _chatBtn, _filesBtn;
 
+    /// <summary>Demo progress bar under the file panes (--session-screenshot --files --progress).</summary>
+    public void ShowDemoProgress(string name, long done, long total, double bytesPerSec) =>
+        _files.ShowDemoProgress(name, done, total, bytesPerSec);
+
     /// <summary>Demo file transfer view: made-up folders on both sides, no connection.</summary>
     public void ShowDemoFiles(string localPath, List<Host.FileEntry> local, string remotePath, List<Host.FileEntry> remote)
     {
@@ -187,7 +191,13 @@ internal sealed class SessionForm : Form
         _client.OnFrame = (bmp, w, h) => Ui(() => _screen.SetFrame(bmp));
         _client.OnChat = t => Ui(() => _chat.Add("Remote", t));
         _client.OnFileList = (p, e) => Ui(() => _files.ShowRemote(p, e));
-        _client.OnFileData = (n, d) => Ui(() => _files.Saved(n, d));
+        _client.OnTransfer = x =>
+        {
+            // copy the fields now: the transfer object keeps changing on the network thread
+            var snap = new Client.Transfer { Id = x.Id, Upload = x.Upload, Name = x.Name, Done = x.Done, Total = x.Total,
+                                             Finished = x.Finished, Ok = x.Ok, Error = x.Error };
+            Ui(() => _files.TransferUpdate(snap));
+        };
         _client.OnClosed = () => Ui(() => SetStatus("Disconnected"));
 
         _screen.Send = _client;

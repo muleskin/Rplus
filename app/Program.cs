@@ -17,6 +17,10 @@ internal static class Program
         for (int i = 0; i < args.Length; i++)
             if (args[i] == "--screenshot" && i + 1 < args.Length) shot = args[i + 1];
 
+        // --transfer-selftest <out.txt>: chunked file transfer between a local host and controller
+        int xt = Array.IndexOf(args, "--transfer-selftest");
+        if (xt >= 0 && xt + 1 < args.Length) { File.WriteAllText(args[xt + 1], TransferSelfTest()); return; }
+
         // --login-selftest <out.txt>: approve-mode rules on this PC only (no server).
         int lt = Array.IndexOf(args, "--login-selftest");
         if (lt >= 0 && lt + 1 < args.Length) { File.WriteAllText(args[lt + 1], LoginSelfTest()); return; }
@@ -32,7 +36,7 @@ internal static class Program
 
         // --session-screenshot <out.png>: the session window with a made-up remote desktop (no connection)
         int ss = Array.IndexOf(args, "--session-screenshot");
-        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1], Array.IndexOf(args, "--files") >= 0, Array.IndexOf(args, "--chat") >= 0, Array.IndexOf(args, "--toolbar") >= 0); return; }
+        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1], Array.IndexOf(args, "--files") >= 0 || Array.IndexOf(args, "--progress") >= 0, Array.IndexOf(args, "--chat") >= 0, Array.IndexOf(args, "--toolbar") >= 0, Array.IndexOf(args, "--progress") >= 0); return; }
 
         // --accept-screenshot <out.png>: the accept window for a made-up visitor (no connection)
         int asx = Array.IndexOf(args, "--accept-screenshot");
@@ -74,6 +78,131 @@ internal static class Program
             SetForegroundWindow(p.MainWindowHandle);
             return;
         }
+    }
+
+    /// <summary>Sends files both ways between a host and a controller on this PC (temp folders only),
+    /// checks every byte, and checks that cancelled transfers leave nothing behind.</summary>
+    private static string TransferSelfTest()
+    {
+        var log = new System.Text.StringBuilder();
+        int passed = 0, total = 0;
+        void Check(string name, bool ok, string detail)
+        {
+            total++; if (ok) passed++;
+            log.AppendLine($"{(ok ? "PASS" : "FAIL")}  {name}  ({detail})");
+        }
+
+        string root = Path.Combine(Path.GetTempPath(), "rplus-xfer-" + Guid.NewGuid().ToString("N")[..8]);
+        string local = Path.Combine(root, "local"), remote = Path.Combine(root, "remote");
+        Directory.CreateDirectory(local); Directory.CreateDirectory(remote);
+
+        var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        probe.Start(); int port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port; probe.Stop();
+        var cfg = Config.Temporary("", "", "");
+        cfg.ApproveMode = "password"; cfg.DirectPort = port;
+        var host = new Host(cfg);
+        host.Start();
+
+        var client = new Client();
+        var authed = new ManualResetEventSlim();
+        client.OnAuthRequest = (pw, _) => { if (pw) client.SendPassword(cfg.RuntimeOneTimePassword); };
+        client.OnAuthResult = (ok, _, _) => { if (ok) authed.Set(); };
+        client.OnFrame = (bmp, _, _) => bmp.Dispose();
+
+        // one transfer at a time: the test waits for each to finish
+        var finished = new ManualResetEventSlim();
+        Client.Transfer last = null;
+        Action<Client.Transfer> onProgress = null;
+        client.OnTransfer = x =>
+        {
+            if (x.Finished) { last = new Client.Transfer { Id = x.Id, Ok = x.Ok, Error = x.Error, Done = x.Done, Total = x.Total }; finished.Set(); }
+            else onProgress?.Invoke(x);
+        };
+        Client.Transfer Run(Func<int> start, int timeoutMs = 60000)
+        {
+            finished.Reset(); last = null;
+            start();
+            return finished.Wait(timeoutMs) ? last : new Client.Transfer { Ok = false, Error = "timed out" };
+        }
+
+        static string Hash(string p)
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            using var fs = File.OpenRead(p);
+            return Convert.ToHexString(sha.ComputeHash(fs));
+        }
+        static void MakeFile(string p, long size)
+        {
+            var rnd = new Random(1234);
+            var buf = new byte[1 << 20];
+            using var fs = File.Create(p);
+            for (long left = size; left > 0; left -= buf.Length)
+            {
+                rnd.NextBytes(buf);
+                fs.Write(buf, 0, (int)Math.Min(buf.Length, left));
+            }
+        }
+
+        try
+        {
+            client.Connect("127.0.0.1", port, "selftest");
+            if (!authed.Wait(10000)) { Check("connect", false, "no login"); return log.ToString(); }
+
+            // 1. upload 5 MB (not a multiple of the chunk size)
+            string src = Path.Combine(local, "five.bin"); MakeFile(src, 5L * 1024 * 1024 + 12345);
+            var r = Run(() => client.Upload(src, Path.Combine(remote, "five.bin")));
+            string dst = Path.Combine(remote, "five.bin");
+            Check("upload 5 MB arrives intact", r.Ok && File.Exists(dst) && Hash(dst) == Hash(src),
+                  r.Ok ? "same SHA-256" : r.Error);
+
+            // 2. download it back under another folder
+            string back = Path.Combine(root, "back"); Directory.CreateDirectory(back);
+            r = Run(() => client.Download(dst, back));
+            string got = Path.Combine(back, "five.bin");
+            Check("download 5 MB arrives intact", r.Ok && File.Exists(got) && Hash(got) == Hash(src),
+                  r.Ok ? "same SHA-256" : r.Error);
+
+            // 3. bigger than the old single-message limit (64 MB)
+            string big = Path.Combine(local, "big.bin"); MakeFile(big, 100L * 1024 * 1024);
+            r = Run(() => client.Upload(big, Path.Combine(remote, "big.bin")), 120000);
+            string bigDst = Path.Combine(remote, "big.bin");
+            Check("upload 100 MB (over the old 64 MB limit)", r.Ok && File.Exists(bigDst) && Hash(bigDst) == Hash(big),
+                  r.Ok ? "same SHA-256" : r.Error);
+
+            // 4. cancel an upload partway: no file, no .part
+            int id = 0;
+            onProgress = x => { if (x.Done > 0 && x.Done < x.Total) client.CancelTransfer(x.Id); };
+            r = Run(() => id = client.Upload(big, Path.Combine(remote, "cancelled.bin")), 120000);
+            onProgress = null;
+            Thread.Sleep(500);   // the host deletes its .part when the cancel reaches it
+            bool noneLeft = !File.Exists(Path.Combine(remote, "cancelled.bin")) && !File.Exists(Path.Combine(remote, "cancelled.bin.part"));
+            Check("cancelled upload leaves nothing", !r.Ok && r.Error == "Cancelled" && noneLeft,
+                  $"result: {(r.Ok ? "ok" : r.Error)}, leftovers: {(noneLeft ? "none" : "found")}");
+
+            // 5. cancel a download partway
+            string dl = Path.Combine(root, "dl"); Directory.CreateDirectory(dl);
+            onProgress = x => { if (x.Done > 0 && x.Done < x.Total) client.CancelTransfer(x.Id); };
+            r = Run(() => client.Download(bigDst, dl), 120000);
+            onProgress = null;
+            Thread.Sleep(300);
+            noneLeft = !File.Exists(Path.Combine(dl, "big.bin")) && !File.Exists(Path.Combine(dl, "big.bin.part"));
+            Check("cancelled download leaves nothing", !r.Ok && r.Error == "Cancelled" && noneLeft,
+                  $"result: {(r.Ok ? "ok" : r.Error)}, leftovers: {(noneLeft ? "none" : "found")}");
+
+            // 6. a file that isn't there
+            r = Run(() => client.Download(Path.Combine(remote, "missing.bin"), dl));
+            Check("missing file is reported", !r.Ok && r.Error.Contains("missing.bin"), r.Ok ? "said ok" : r.Error);
+        }
+        catch (Exception e) { Check("no exceptions", false, e.Message); }
+        finally
+        {
+            try { client.Close(); } catch { }
+            try { host.Stop(); } catch { }
+            Thread.Sleep(300);
+            try { Directory.Delete(root, true); } catch { }
+        }
+        log.AppendLine($"RESULT: {passed}/{total}");
+        return log.ToString();
     }
 
     /// <summary>Runs one login per approve-mode case against a local host and reports each.</summary>
@@ -182,7 +311,7 @@ internal static class Program
 
     /// <summary>Saves the session window showing a drawn demo desktop. Nothing real is captured:
     /// the settings are throwaway, there is no connection, and the window renders itself.</summary>
-    private static void RunSessionScreenshot(string path, bool files = false, bool chatOnly = false, bool toolbarOnly = false)
+    private static void RunSessionScreenshot(string path, bool files = false, bool chatOnly = false, bool toolbarOnly = false, bool progress = false)
     {
         var cfg = Config.Demo();
         cfg.ViewStyle = "Adjust window";   // show the whole demo desktop
@@ -196,9 +325,10 @@ internal static class Program
             Host.FileEntry D(string n, double daysAgo) => new() { name = n, isDir = true, modified = now.AddDays(-daysAgo).ToString("yyyy-MM-dd HH:mm") };
             Host.FileEntry F(string n, long size, double daysAgo) => new() { name = n, size = size, modified = now.AddDays(-daysAgo).ToString("yyyy-MM-dd HH:mm") };
             form.ShowDemoFiles(@"C:\Users\Public\Documents",
-                new() { D("Invoices", 3), D("Photos", 12), F("Budget 2026.xlsx", 48_210, 1.2), F("Meeting notes.docx", 23_552, 0.3), F("Team photo.jpg", 2_457_600, 9), F("Setup guide.pdf", 1_310_720, 30) },
+                new() { D("Invoices", 3), D("Photos", 12), F("Budget 2026.xlsx", 48_210, 1.2), F("Meeting notes.docx", 23_552, 0.3), F("Team photo.jpg", 2_457_600, 9), F("Setup guide.pdf", 1_310_720, 30), F("Holiday video.mp4", 769_654_784, 4) },
                 @"D:\Shared\Reports",
                 new() { D("Archive", 40), F("March figures.xlsx", 61_440, 0.1), F("Q1 summary.pdf", 845_000, 2), F("Sales chart.png", 312_000, 0.5), F("Readme.txt", 1_200, 60) });
+            if (progress) form.ShowDemoProgress("Holiday video.mp4", 477_185_966, 769_654_784, 11.4 * 1024 * 1024);
         }
         else if (chatOnly)
         {

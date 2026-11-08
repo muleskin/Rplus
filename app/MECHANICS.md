@@ -113,6 +113,31 @@ Rplus uses its own simple session (JSON control messages + JPEG frames, see `Pro
 so it only controls other computers running Rplus. When the relay answer's version isn't
 Rplus's, it says so.
 
+## File transfer
+
+Files move in 256 KB chunks (see `FileTransfer.cs`), so screen frames keep flowing during a
+transfer and there's no size limit beyond the disk. The controller numbers each transfer.
+
+| Message | Direction | Body |
+|---|---|---|
+| `FileGet` (12) | controller → host | { path, id } — asks for a download |
+| `XferStart` (17) | sender → receiver | { id, name, size, path } (path = destination on the host, uploads only) |
+| `XferChunk` (18) | sender → receiver | [4-byte id][up to 256 KB] |
+| `XferEnd` (19) | sender → receiver | { id, ok, error } — all chunks sent, or stopped |
+| `XferResult` (20) | host → controller | { id, ok, error } — upload saved, or why not |
+| `XferCancel` (21) | either | { id } |
+
+- The receiver writes to `<name>.part` and renames it only when every byte has arrived, so a
+  cancelled, failed or dropped transfer never leaves a partial file under the real name.
+- The host keeps each connection's transfers separately and cleans them up when it ends.
+- The file view shows one transfer at a time: name, percentage, amount, speed and Cancel;
+  progress updates about ten times a second.
+- The old one-message `FileData` (13) / `FilePut` (14) are retired, so both computers need
+  Rplus 1.0.13 or later to transfer files.
+- `Rplus.exe --transfer-selftest <out.txt>` sends files both ways between a host and controller
+  on this PC (temp folders only), checks every byte, and checks that cancelled transfers leave
+  nothing behind.
+
 ## Home screen layout
 
 - "Your Desktop" card: ID, one-time password with refresh/copy, the text "Your desktop can be

@@ -21,3 +21,4 @@ app/shots/*
 !app/shots/toolbar.png
 !app/shots/accept.png
 !app/shots/password.png
+!app/shots/progress.png

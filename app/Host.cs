@@ -184,6 +184,13 @@ internal sealed class Host
 
     private void ReadLoop(Transport t, Task<Msg> pending = null)
     {
+        var sf = new SessionFiles();
+        try { ReadMessages(t, pending, sf); }
+        finally { sf.EndAll(); }
+    }
+
+    private void ReadMessages(Transport t, Task<Msg> pending, SessionFiles sf)
+    {
         var rect = Native.VirtualScreen();
         while (_running && t.Connected)
         {
@@ -215,10 +222,19 @@ internal sealed class Host
                     HandleFileList(t, m);
                     break;
                 case MsgType.FileGet:
-                    HandleFileGet(t, m);
+                    HandleFileGet(t, m, sf);
                     break;
-                case MsgType.FilePut:
-                    HandleFilePut(m);
+                case MsgType.XferStart:
+                    HandleUploadStart(t, m, sf);
+                    break;
+                case MsgType.XferChunk:
+                    sf.Uploads.Chunk(m.Blob);
+                    break;
+                case MsgType.XferEnd:
+                    HandleUploadEnd(t, m, sf);
+                    break;
+                case MsgType.XferCancel:
+                    HandleCancel(m, sf);
                     break;
                 case MsgType.Bye:
                     return;
@@ -284,38 +300,70 @@ internal sealed class Host
         try { return Directory.GetLastWriteTime(d).ToString("yyyy-MM-dd HH:mm"); } catch { return ""; }
     }
 
-    private void HandleFileGet(Transport t, Msg m)
+    /// <summary>One connection's transfers: uploads arriving and downloads being sent, by transfer id.
+    /// Per connection, because each controller numbers its own transfers from 1.</summary>
+    private sealed class SessionFiles
     {
-        if (!_cfg.EnableFileTransfer) return;
-        string path = "";
-        try { path = m.Body<FileGetBody>()?.path ?? ""; } catch { }
-        try
+        public readonly FileReceiver Uploads = new();
+        public readonly Dictionary<int, CancellationTokenSource> Downloads = new();
+        public void EndAll()
         {
-            var bytes = File.ReadAllBytes(path);
-            var name = Path.GetFileName(path);
-            var head = JsonSerializer.SerializeToUtf8Bytes(new { name, size = bytes.Length });
-            // FileData payload = [int headLen][head json][file bytes]
-            var blob = new byte[4 + head.Length + bytes.Length];
-            blob[0] = (byte)(head.Length >> 24); blob[1] = (byte)(head.Length >> 16);
-            blob[2] = (byte)(head.Length >> 8); blob[3] = (byte)head.Length;
-            Array.Copy(head, 0, blob, 4, head.Length);
-            Array.Copy(bytes, 0, blob, 4 + head.Length, bytes.Length);
-            t.Send(new Msg { Type = MsgType.FileData, Blob = blob });
+            lock (Downloads) foreach (var c in Downloads.Values) { try { c.Cancel(); } catch { } }
+            Uploads.AbortAll();   // half-received files are deleted, never left under their real name
         }
-        catch { }
     }
 
-    private void HandleFilePut(Msg m)
+    private void HandleFileGet(Transport t, Msg m, SessionFiles sf)
     {
-        if (!_cfg.EnableFileTransfer) return;
-        try
+        FileGetBody b;
+        try { b = m.Body<FileGetBody>(); } catch { return; }
+        if (b == null || b.id <= 0) return;   // only the chunked form is answered
+        if (!_cfg.EnableFileTransfer)
         {
-            int headLen = (m.Blob[0] << 24) | (m.Blob[1] << 16) | (m.Blob[2] << 8) | m.Blob[3];
-            var head = JsonSerializer.Deserialize<FilePutHead>(m.Blob.AsSpan(4, headLen));
-            var data = m.Blob.AsSpan(4 + headLen).ToArray();
-            File.WriteAllBytes(head.path, data);
+            t.Send(Msg.Control(MsgType.XferEnd, new FileXfer.EndBody { id = b.id, ok = false, error = "File transfer is turned off on the other computer" }));
+            return;
         }
-        catch { }
+        var cts = new CancellationTokenSource();
+        lock (sf.Downloads) sf.Downloads[b.id] = cts;
+        Task.Run(() =>
+        {
+            try { FileXfer.Send(t, b.id, b.path ?? "", "", cts.Token, null); }
+            finally { lock (sf.Downloads) sf.Downloads.Remove(b.id); cts.Dispose(); }
+        });
+    }
+
+    private void HandleUploadStart(Transport t, Msg m, SessionFiles sf)
+    {
+        FileXfer.StartBody b;
+        try { b = m.Body<FileXfer.StartBody>(); } catch { return; }
+        if (b == null) return;
+        string err = !_cfg.EnableFileTransfer ? "File transfer is turned off on the other computer"
+                   : string.IsNullOrEmpty(b.path) ? "No destination folder"
+                   : sf.Uploads.Start(b.id, b.name, b.path, b.size);
+        if (err != "")
+        {
+            // Tell the sender straight away so it stops; any chunks still on the way are ignored.
+            t.Send(Msg.Control(MsgType.XferCancel, new FileXfer.IdBody { id = b.id }));
+            t.Send(Msg.Control(MsgType.XferResult, new FileXfer.EndBody { id = b.id, ok = false, error = err }));
+        }
+    }
+
+    private void HandleUploadEnd(Transport t, Msg m, SessionFiles sf)
+    {
+        FileXfer.EndBody b;
+        try { b = m.Body<FileXfer.EndBody>(); } catch { return; }
+        if (b == null) return;
+        string err = sf.Uploads.Finish(b.id, b.ok, b.error);
+        t.Send(Msg.Control(MsgType.XferResult, new FileXfer.EndBody { id = b.id, ok = err == "", error = err }));
+    }
+
+    private void HandleCancel(Msg m, SessionFiles sf)
+    {
+        FileXfer.IdBody b;
+        try { b = m.Body<FileXfer.IdBody>(); } catch { return; }
+        if (b == null) return;
+        lock (sf.Downloads) if (sf.Downloads.TryGetValue(b.id, out var cts)) cts.Cancel();
+        sf.Uploads.Abort(b.id);
     }
 
     // ---- body DTOs ----
@@ -335,8 +383,7 @@ internal sealed class Host
         public string text { get; set; } = "";
     }
     public sealed class FileListBody { public string path { get; set; } }
-    public sealed class FileGetBody { public string path { get; set; } }
-    public sealed class FilePutHead { public string path { get; set; } }
+    public sealed class FileGetBody { public string path { get; set; } public int id { get; set; } }
     public sealed class FileEntry
     {
         public string name { get; set; } = "";

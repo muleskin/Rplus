@@ -30,6 +30,8 @@ also close the prompt and wait for someone to click Accept:
 
 ![Rplus file transfer between two computers](app/shots/files.png)
 
+![Rplus file transfer in progress](app/shots/progress.png)
+
 ![Rplus recent and favourite computers](app/shots/recent.png)
 
 ![Rplus settings page](app/shots/settings.png)

@@ -22,11 +22,16 @@ internal enum MsgType : byte
     Quality = 9,        // client -> host : { quality }  (0..100)
     FileList = 10,      // either        : { path, remote }
     FileListReply = 11, // { path, entries:[{name,isDir,size,modified}] }
-    FileGet = 12,       // { path }
-    FileData = 13,      // { name } + bytes
-    FilePut = 14,       // { path } + bytes
+    FileGet = 12,       // client -> host : { path, id }  (host answers with a chunked transfer)
+    FileData = 13,      // retired (whole-file download in one message)
+    FilePut = 14,       // retired (whole-file upload in one message)
     Ping = 15,
     Bye = 16,
+    XferStart = 17,     // sender -> receiver : { id, name, size, path }        (see FileTransfer.cs)
+    XferChunk = 18,     // sender -> receiver : [4-byte id][data]
+    XferEnd = 19,       // sender -> receiver : { id, ok, error }  all chunks sent, or stopped
+    XferResult = 20,    // receiver -> sender : { id, ok, error }  file saved, or why not
+    XferCancel = 21,    // either             : { id }
 }
 
 internal sealed class Msg

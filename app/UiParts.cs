@@ -172,7 +172,6 @@ internal sealed class FilePanel : Panel
     private ListView _local, _remote;
     private TextBox _localPath, _remotePath;
     private string _localDir = "", _remoteDir = "";
-    private string _pendingSaveDir = "";
 
     public FilePanel(Config cfg)
     {
@@ -190,6 +189,51 @@ internal sealed class FilePanel : Panel
         Controls.Add(_remotePanel);
         Controls.Add(mid);
         Controls.Add(_localPanel);
+        _bar = new TransferBar { Dock = DockStyle.Bottom, Visible = false };
+        _bar.CancelClicked = () => { if (_activeId > 0) _client?.CancelTransfer(_activeId); };
+        Controls.Add(_bar);
+        _bar.SendToBack();   // docked first, so it takes the full width under both panes
+    }
+
+    private TransferBar _bar;
+    private int _activeId;                       // the transfer in progress (one at a time), 0 = none
+    private DateTime _activeStart;
+    private readonly System.Windows.Forms.Timer _hideBar = new() { Interval = 5000 };
+
+    /// <summary>Progress and the end of a transfer, on the UI thread.</summary>
+    public void TransferUpdate(Client.Transfer x)
+    {
+        if (x.Id != _activeId) return;
+        _hideBar.Stop();
+        _bar.Visible = true;
+        if (!x.Finished)
+        {
+            double secs = Math.Max(0.001, (DateTime.Now - _activeStart).TotalSeconds);
+            _bar.Show(x.Upload ? "Sending" : "Receiving", x.Name, x.Done, x.Total, x.Done / secs, running: true);
+            return;
+        }
+        _activeId = 0;
+        string msg = x.Ok ? (x.Upload ? $"Sent {x.Name}" : $"Saved {x.Name}")
+                   : x.Error == "Cancelled" ? $"Cancelled {x.Name}" : $"{x.Name}: {x.Error}";
+        _bar.Done(msg, x.Ok);
+        if (x.Ok) { if (x.Upload) _client?.RequestFileList(_remoteDir); else LoadLocal(_localDir); }
+        _hideBar.Tick -= HideBar; _hideBar.Tick += HideBar;
+        _hideBar.Start();
+    }
+    private void HideBar(object s, EventArgs e) { _hideBar.Stop(); if (_activeId == 0) _bar.Visible = false; }
+
+    private bool Busy()
+    {
+        if (_activeId == 0) return false;
+        _bar.Flash();
+        return true;
+    }
+
+    /// <summary>Demo progress for --session-screenshot --files --progress.</summary>
+    public void ShowDemoProgress(string name, long done, long total, double bytesPerSec)
+    {
+        _bar.Visible = true;
+        _bar.Show("Sending", name, done, total, bytesPerSec, running: true);
     }
 
     private Panel _localPanel, _remotePanel;
@@ -322,38 +366,26 @@ internal sealed class FilePanel : Panel
     // ---- transfer ----
     private void Upload()   // local -> remote
     {
+        if (_client == null || Busy()) return;
         if (_local.SelectedItems.Count == 0 || string.IsNullOrEmpty(_localDir)) return;
         var it = _local.SelectedItems[0];
         if ((bool)it.Tag) return; // only files
+        if (string.IsNullOrEmpty(_remoteDir)) { _bar.Visible = true; _bar.Done("Open a folder on the remote computer first", false); return; }
         string path = Path.Combine(_localDir, it.Text);
-        try
-        {
-            var data = File.ReadAllBytes(path);
-            string dest = string.IsNullOrEmpty(_remoteDir) ? it.Text : Path.Combine(_remoteDir, it.Text);
-            _client?.PutFile(dest, data);
-            _client?.RequestFileList(_remoteDir);
-        }
-        catch { }
+        string dest = Path.Combine(_remoteDir, it.Text);
+        _activeStart = DateTime.Now;
+        _activeId = _client.Upload(path, dest);
     }
     private void Download() // remote -> local
     {
+        if (_client == null || Busy()) return;
         if (_remote.SelectedItems.Count == 0 || string.IsNullOrEmpty(_remoteDir)) return;
         var it = _remote.SelectedItems[0];
         if ((bool)it.Tag) return;
-        _pendingSaveDir = _localDir;
-        string path = Path.Combine(_remoteDir, it.Text);
-        _client?.RequestFile(path);
-    }
-    public void Saved(string name, byte[] data)
-    {
-        try
-        {
-            string dir = string.IsNullOrEmpty(_pendingSaveDir)
-                ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop) : _pendingSaveDir;
-            File.WriteAllBytes(Path.Combine(dir, name), data);
-            LoadLocal(_localDir);
-        }
-        catch { }
+        string dir = string.IsNullOrEmpty(_localDir)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.Desktop) : _localDir;
+        _activeStart = DateTime.Now;
+        _activeId = _client.Download(Path.Combine(_remoteDir, it.Text), dir);
     }
 
     private static ImageList _listIcons;
@@ -395,5 +427,84 @@ internal sealed class FilePanel : Panel
         double v = b; int i = 0;
         while (v >= 1024 && i < u.Length - 1) { v /= 1024; i++; }
         return $"{v:0.#} {u[i]}";
+    }
+}
+
+/// <summary>The strip under the file panes: what's moving, how far, how fast, and Cancel.</summary>
+internal sealed class TransferBar : Panel
+{
+    private string _line = "", _detail = "";
+    private double _fraction;
+    private bool _running, _ok = true;
+    private readonly FlatButton _cancel;
+    public Action CancelClicked;
+
+    public TransferBar()
+    {
+        Height = 58;
+        BackColor = Theme.Card;
+        DoubleBuffered = true;
+        Padding = new Padding(12, 0, 12, 0);
+        _cancel = new FlatButton { Text = "Cancel", Primary = false, Size = new Size(84, 32) };
+        _cancel.Click += (_, _) => CancelClicked?.Invoke();
+        Controls.Add(_cancel);
+        Resize += (_, _) => _cancel.Location = new Point(Width - _cancel.Width - 12, (Height - _cancel.Height) / 2);
+    }
+
+    public void Show(string verb, string name, long done, long total, double bytesPerSec, bool running)
+    {
+        _running = running; _ok = true;
+        _fraction = total > 0 ? Math.Clamp((double)done / total, 0, 1) : 0;
+        _line = $"{verb} {name}";
+        _detail = $"{(int)Math.Round(_fraction * 100)}%  ·  {Size(done)} of {Size(total)}" +
+                  (bytesPerSec > 0 && done > 0 ? $"  ·  {Size((long)bytesPerSec)}/s" : "");
+        _cancel.Visible = true;
+        Invalidate();
+    }
+
+    public void Done(string message, bool ok)
+    {
+        _running = false; _ok = ok;
+        _line = message; _detail = "";
+        _fraction = ok ? 1 : _fraction;
+        _cancel.Visible = false;
+        Invalidate();
+    }
+
+    /// <summary>A second transfer was asked for while one is running: draw attention to this one.</summary>
+    public void Flash()
+    {
+        Visible = true;
+        _detail = (_detail.Length > 0 ? _detail + "  ·  " : "") + "one transfer at a time";
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using (var pen = new Pen(Theme.CardBorder)) g.DrawLine(pen, 0, 0, Width, 0);
+        int right = (_cancel.Visible ? _cancel.Left : Width) - 16;
+        int x = 12, w = Math.Max(40, right - x);
+        TextRenderer.DrawText(g, _line, Theme.F(9.5f, FontStyle.Bold), new Rectangle(x, 8, w, 20),
+            _ok ? Theme.TextMain : Theme.Danger, TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+        if (_detail.Length > 0)
+            TextRenderer.DrawText(g, _detail, Theme.F(8.5f), new Rectangle(x, 8, w, 20), Theme.TextDim,
+                TextFormatFlags.Right | TextFormatFlags.EndEllipsis);
+        var track = new Rectangle(x, 34, w, 10);
+        Theme.FillRound(g, track, 5, Color.FromArgb(232, 236, 242));
+        if (_fraction > 0)
+        {
+            var fill = new Rectangle(x, 34, Math.Max(10, (int)(w * _fraction)), 10);
+            Theme.FillRound(g, fill, 5, !_ok ? Theme.Danger : _running ? Theme.Accent : Theme.Ok);
+        }
+    }
+
+    private static string Size(long b)
+    {
+        string[] u = { "B", "KB", "MB", "GB", "TB" };
+        double v = b; int i = 0;
+        while (v >= 1024 && i < u.Length - 1) { v /= 1024; i++; }
+        return i == 0 ? $"{b} B" : $"{v:0.0} {u[i]}";
     }
 }
