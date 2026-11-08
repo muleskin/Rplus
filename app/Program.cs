@@ -37,7 +37,12 @@ internal static class Program
         // --demo: throwaway settings (random ID, no server, default approval), e.g. for README screenshots
         var cfg = Array.IndexOf(args, "--demo") >= 0 ? Config.Demo() : Config.Load();
 
-        if (shot != null) { RunScreenshot(cfg, shot); return; }
+        if (shot != null)
+        {
+            int pg = Array.IndexOf(args, "--page");
+            RunScreenshot(cfg, shot, pg >= 0 && pg + 1 < args.Length ? args[pg + 1] : null);
+            return;
+        }
 
         // One copy at a time: if Rplus is already open, bring its window to the front instead of starting again.
         using var single = new Mutex(true, "Local\\Rplus.SingleInstance", out bool first);
@@ -259,13 +264,14 @@ internal static class Program
         return bmp;
     }
 
-    private static void RunScreenshot(Config cfg, string path)
+    private static void RunScreenshot(Config cfg, string path, string page = null)
     {
         var form = new MainForm(cfg);
         form.StartPosition = FormStartPosition.Manual;
         form.Location = new Point(0, 0);
         form.Show();
         Application.DoEvents();
+        if (page != null) form.OpenPage(page);
 
         for (int i = 0; i < 120; i++)
         {

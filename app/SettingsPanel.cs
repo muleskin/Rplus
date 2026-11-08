@@ -193,7 +193,7 @@ internal sealed class SettingsPanel : Panel
         return c;
     }
     private CheckBox Check(string text, bool on) =>
-        new() { Text = text, Checked = on, AutoSize = true, Font = Theme.F(9.5f), ForeColor = Theme.TextMain, BackColor = Color.Transparent };
+        new() { Text = text, UseMnemonic = false, Checked = on, AutoSize = true, Font = Theme.F(9.5f), ForeColor = Theme.TextMain, BackColor = Color.Transparent };
     private TextBox Text(string val, bool pw) =>
         new() { Text = val, Width = 300, Font = Theme.F(9.5f), UseSystemPasswordChar = pw };
     private TrackBar Slider(int val, int min, int max, int tick) =>

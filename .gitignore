@@ -14,3 +14,4 @@ app/shots/*
 !app/shots/icon.png
 !app/shots/home.png
 !app/shots/session.png
+!app/shots/settings.png

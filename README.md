@@ -10,6 +10,8 @@ self-hosted ID/relay server.
 
 ![Rplus session window with chat open](app/shots/session.png)
 
+![Rplus settings page](app/shots/settings.png)
+
 ## Download
 
 Get `Rplus.exe` from the [latest release](https://github.com/muleskin/Rplus/releases/latest).

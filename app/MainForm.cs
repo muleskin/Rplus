@@ -187,6 +187,14 @@ internal sealed class MainForm : Form
         if (e.X < RailW && _railHover >= 0) ShowNav(_items[_railHover].nav);
     }
 
+    /// <summary>Opens a page by name ("home", "recent", "settings"); used by --screenshot --page.</summary>
+    public void OpenPage(string page) => ShowNav(page?.ToLowerInvariant() switch
+    {
+        "settings" => Nav.Settings,
+        "recent" => Nav.Peers,
+        _ => Nav.Home,
+    });
+
     private void ShowNav(Nav n)
     {
         _nav = n;
