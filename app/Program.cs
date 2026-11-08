@@ -40,6 +40,8 @@ internal static class Program
         if (shot != null)
         {
             int pg = Array.IndexOf(args, "--page");
+            if (cfg.Ephemeral && pg >= 0 && pg + 1 < args.Length && args[pg + 1].Equals("recent", StringComparison.OrdinalIgnoreCase))
+                cfg.AddDemoPeers();   // --demo only: an empty Recent page shows nothing
             RunScreenshot(cfg, shot, pg >= 0 && pg + 1 < args.Length ? args[pg + 1] : null);
             return;
         }

@@ -15,3 +15,4 @@ app/shots/*
 !app/shots/home.png
 !app/shots/session.png
 !app/shots/settings.png
+!app/shots/recent.png

@@ -367,7 +367,7 @@ internal sealed class MainForm : Form
     private void BuildPeers()
     {
         _peers = new DoubleBufferedPanel { BackColor = Theme.Canvas, Visible = false };
-        var title = new Label { Text = "Recent & Favourites", Font = Theme.F(14f, FontStyle.Bold),
+        var title = new Label { Text = "Recent & Favourites", UseMnemonic = false, Font = Theme.F(14f, FontStyle.Bold),
             ForeColor = Theme.TextMain, AutoSize = true, Location = new Point(28, 24), BackColor = Color.Transparent };
         _peers.Controls.Add(title);
         _peerList = new FlowLayoutPanel { Location = new Point(28, 64), AutoScroll = true,
@@ -515,7 +515,7 @@ internal sealed class MainForm : Form
 
     private static void CopyTo(string s) { try { if (!string.IsNullOrEmpty(s)) Clipboard.SetText(s); } catch { } }
     private static string FormatId(string id) => Config.FormatId(id);
-    private static string PlatGlyph(string p) => p switch { "mac" => "", "linux" => "", "android" => "", _ => "" };
+    private static string PlatGlyph(string p) => p switch { "mac" => "", "linux" => "", "android" => "", _ => "" };
     private Font IconFont(float sz) => new(FontAvail("Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets", sz);
 
     protected override void OnFormClosing(FormClosingEventArgs e) { _linkTimer?.Stop(); _link?.Stop(); _host.Stop(); _cfg.Save(); base.OnFormClosing(e); }

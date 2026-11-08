@@ -34,7 +34,9 @@ internal sealed class PeerRow : Control
         string title = string.IsNullOrEmpty(_p.Alias) ? Fmt(_p.Id) : _p.Alias;
         TextRenderer.DrawText(g, title, Theme.F(11f, FontStyle.Bold),
             new Rectangle(54, 10, Width - 250, 22), Theme.TextMain, TextFormatFlags.Left);
-        string sub = (_p.Host ?? "") + (string.IsNullOrEmpty(_p.LastConnected) ? "" : "   •   " + _p.LastConnected);
+        // address (or the ID when the title is an alias and there's no address), then the last time used
+        string where = !string.IsNullOrEmpty(_p.Host) ? _p.Host : string.IsNullOrEmpty(_p.Alias) ? "" : Fmt(_p.Id);
+        string sub = string.Join("   •   ", new[] { where, _p.LastConnected ?? "" }.Where(s => s.Length > 0));
         TextRenderer.DrawText(g, sub, Theme.F(8.5f),
             new Rectangle(54, 31, Width - 250, 18), Theme.TextDim, TextFormatFlags.Left);
 
@@ -72,7 +74,7 @@ internal sealed class PeerRow : Control
         base.OnMouseClick(e);
     }
 
-    private string Plat() => _p.Platform switch { "mac" => "", "android" => "", _ => "" };
+    private string Plat() => _p.Platform switch { "mac" => "", "android" => "", _ => "" };
     private static string Fmt(string id) => (id?.Length == 9) ? $"{id[..3]} {id.Substring(3,3)} {id.Substring(6,3)}" : id;
 }
 

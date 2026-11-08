@@ -116,6 +116,19 @@ internal sealed class Config
         return c;
     }
 
+    /// <summary>Made-up recent sessions for --demo screenshots: random IDs, documentation-range
+    /// IPs (192.0.2.x, never a real machine) and times relative to now.</summary>
+    public void AddDemoPeers()
+    {
+        var now = DateTime.Now;
+        string T(double hoursAgo) => now.AddHours(-hoursAgo).ToString("yyyy-MM-dd HH:mm");
+        Peers.Add(new Peer { Id = RandomId(), Alias = "Office PC", Platform = "win", Favorite = true, LastConnected = T(2) });
+        Peers.Add(new Peer { Id = RandomId(), Alias = "Mum's laptop", Platform = "win", Favorite = true, LastConnected = T(27) });
+        Peers.Add(new Peer { Id = RandomId(), Alias = "Studio Mac", Platform = "mac", LastConnected = T(5) });
+        Peers.Add(new Peer { Id = RandomId(), Host = "192.0.2.24", Alias = "Media server", Platform = "linux", LastConnected = T(50) });
+        Peers.Add(new Peer { Id = RandomId(), Host = "192.0.2.51", Platform = "win", LastConnected = T(120) });
+    }
+
     public void Save()
     {
         if (Ephemeral) return;
