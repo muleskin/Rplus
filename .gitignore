@@ -1,0 +1,14 @@
+# Only the README and the app source are published.
+/*
+!/.gitignore
+!/README.md
+!/app/
+
+# build output
+app/bin/
+app/obj/
+app/publish/
+
+# test output (holds server addresses / device IDs)
+app/shots/*
+!app/shots/icon.png

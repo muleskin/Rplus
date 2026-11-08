@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "values": [
+    { "name": "single instance", "group": "app", "value": true },
+
+    { "name": "id formula", "group": "identity", "value": "(mac[2]&0x1F)<<24 | mac[3]<<16 | mac[4]<<8 | mac[5]" },
+    { "name": "id mask", "group": "identity", "value": 536870911 },
+    { "name": "id fallback without MAC", "group": "identity", "value": "random 9 digits", "estimated": true },
+    { "name": "id min length", "group": "identity", "value": 6 },
+    { "name": "id max length", "group": "identity", "value": 16 },
+
+    { "name": "one-time password length", "group": "password", "value": 6 },
+    { "name": "one-time password length option 8", "group": "password", "value": 8 },
+    { "name": "one-time password length option 10", "group": "password", "value": 10 },
+    { "name": "one-time password charset", "group": "password", "value": "23456789abcdefghijkmnpqrstuvwxyz" },
+    { "name": "one-time password numeric charset", "group": "password", "value": "0123456789" },
+    { "name": "approve mode default", "group": "security", "value": "password+click" },
+    { "name": "verification method default", "group": "security", "value": "use-both-passwords" },
+
+    { "name": "enable keyboard", "group": "permissions", "value": true },
+    { "name": "enable clipboard", "group": "permissions", "value": true },
+    { "name": "enable file transfer", "group": "permissions", "value": true },
+    { "name": "enable audio", "group": "permissions", "value": true },
+
+    { "name": "view style default", "group": "view", "value": "original" },
+    { "name": "image quality default", "group": "view", "value": "balanced" },
+    { "name": "custom quality default", "group": "view", "value": 50 },
+    { "name": "custom quality min", "group": "view", "value": 10 },
+    { "name": "custom quality validator max", "group": "view", "value": 4095 },
+    { "name": "custom quality slider max", "group": "view", "value": 2000 },
+    { "name": "fps default", "group": "view", "value": 30, "unit": "fps" },
+    { "name": "fps min", "group": "view", "value": 5, "unit": "fps" },
+    { "name": "fps max", "group": "view", "value": 120, "unit": "fps" },
+    { "name": "ratio best", "group": "view", "value": 1.5 },
+    { "name": "ratio balanced", "group": "view", "value": 0.67 },
+    { "name": "ratio low", "group": "view", "value": 0.5 },
+    { "name": "ratio custom formula", "group": "view", "value": "clamp(2*q/100, 0.2, 40)" },
+    { "name": "ratio min", "group": "view", "value": 0.2 },
+    { "name": "ratio max", "group": "view", "value": 40 },
+    { "name": "jpeg quality formula", "group": "view", "value": "clamp(round(30+40*ratio),10,95)", "estimated": true },
+
+    { "name": "direct session port", "group": "network", "value": 21118, "estimated": true },
+    { "name": "id server port", "group": "server", "value": 21116 },
+    { "name": "relay port rule", "group": "server", "value": "ID server port + 1" },
+    { "name": "relay server port", "group": "server", "value": 21117 },
+    { "name": "relay choice order", "group": "server", "value": "relay-server setting, suggested relay, ID server port+1" },
+    { "name": "register interval", "group": "server", "value": 12, "unit": "s", "estimated": true },
+    { "name": "relay answer timeout", "group": "server", "value": 10, "unit": "s", "estimated": true },
+    { "name": "server key setting", "group": "server", "value": "key" },
+    { "name": "not ready message", "group": "server", "value": "Not ready. Please check your connection" }
+  ]
+}
