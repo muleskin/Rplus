@@ -19,3 +19,4 @@ app/shots/*
 !app/shots/files.png
 !app/shots/chat.png
 !app/shots/toolbar.png
+!app/shots/accept.png

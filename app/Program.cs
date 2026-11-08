@@ -34,6 +34,10 @@ internal static class Program
         int ss = Array.IndexOf(args, "--session-screenshot");
         if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1], Array.IndexOf(args, "--files") >= 0, Array.IndexOf(args, "--chat") >= 0, Array.IndexOf(args, "--toolbar") >= 0); return; }
 
+        // --accept-screenshot <out.png>: the accept window for a made-up visitor (no connection)
+        int asx = Array.IndexOf(args, "--accept-screenshot");
+        if (asx >= 0 && asx + 1 < args.Length) { RunAcceptScreenshot(args[asx + 1]); return; }
+
         // --demo: throwaway settings (random ID, no server, default approval), e.g. for README screenshots
         var cfg = Array.IndexOf(args, "--demo") >= 0 ? Config.Demo() : Config.Load();
 
@@ -232,6 +236,29 @@ internal static class Program
                 crop.Save(path, ImageFormat.Png);
             }
             else bmp.Save(path, ImageFormat.Png);
+        }
+        catch { }
+        try { form.Close(); } catch { }
+        Application.Exit();
+    }
+
+    /// <summary>Saves the accept window for a random visitor ID. Nothing connects; the window renders itself.</summary>
+    private static void RunAcceptScreenshot(string path)
+    {
+        var form = new AcceptForm(Config.Demo().Id) { StartPosition = FormStartPosition.Manual, Location = new Point(0, 0) };
+        form.Show();
+        for (int i = 0; i < 80; i++) { Application.DoEvents(); Thread.Sleep(8); }
+        try
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            using var bmp = new Bitmap(form.Width, form.Height);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                IntPtr hdc = g.GetHdc();
+                try { PrintWindow(form.Handle, hdc, 2 /*PW_RENDERFULLCONTENT*/); } finally { g.ReleaseHdc(hdc); }
+            }
+            bmp.Save(path, ImageFormat.Png);
         }
         catch { }
         try { form.Close(); } catch { }

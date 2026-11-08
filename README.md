@@ -19,6 +19,10 @@ The session toolbar, left to right: image quality, view style (fit to window or 
 clipboard text on the remote computer), **Files** (file transfer), **Chat**, **Full screen** and
 **Disconnect**. Highlighted buttons are switched on.
 
+When someone connects and "Accept window" is on in Settings, the shared computer shows:
+
+<img src="app/shots/accept.png" width="376" alt="Rplus accept window for an incoming connection">
+
 ![Rplus file transfer between two computers](app/shots/files.png)
 
 ![Rplus recent and favourite computers](app/shots/recent.png)

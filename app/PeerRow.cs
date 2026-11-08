@@ -84,6 +84,7 @@ internal sealed class AcceptForm : Form
     public AcceptForm(string peerId)
     {
         Text = "Rplus";
+        Icon = Theme.AppIcon();
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false; MinimizeBox = false;
@@ -93,7 +94,10 @@ internal sealed class AcceptForm : Form
 
         var l1 = new Label { Text = "Incoming connection", Font = Theme.F(12f, FontStyle.Bold),
             ForeColor = Theme.TextMain, AutoSize = true, Location = new Point(24, 22) };
-        var l2 = new Label { Text = $"{(string.IsNullOrEmpty(peerId) ? "A remote device" : peerId)} wants to control this computer.",
+        // a 9-digit ID is shown spaced like everywhere else ("123 456 789"); addresses stay as they are
+        string who = string.IsNullOrEmpty(peerId) ? "A remote device"
+            : peerId.Length == 9 && peerId.All(char.IsDigit) ? $"{peerId[..3]} {peerId.Substring(3, 3)} {peerId.Substring(6, 3)}" : peerId;
+        var l2 = new Label { Text = $"{who} wants to control this computer.",
             Font = Theme.F(9.5f), ForeColor = Theme.TextDim, AutoSize = false,
             Location = new Point(24, 54), Size = new Size(312, 40) };
         var accept = new FlatButton { Text = "Accept", Primary = true, Fill = Theme.Ok,
