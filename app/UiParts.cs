@@ -120,20 +120,28 @@ internal sealed class ChatPanel : Panel
             Font = Theme.F(10f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft, BackColor = Color.FromArgb(27, 34, 43) };
         _log = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, BorderStyle = BorderStyle.None,
             BackColor = Color.FromArgb(32, 39, 48), ForeColor = Theme.RailText, Font = Theme.F(9.5f) };
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44, BackColor = Color.FromArgb(27, 34, 43) };
+        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 46, BackColor = Color.FromArgb(27, 34, 43), Padding = new Padding(8, 8, 8, 8) };
         _input = new TextBox { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle, Font = Theme.F(9.5f),
             Margin = new Padding(6) };
         _input.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Fire(); } };
-        var send = new FlatButton { Text = "Send", Primary = true, Dock = DockStyle.Right, Width = 70 };
+        var send = new FlatButton { Text = "Send", Primary = true, Dock = DockStyle.Right, Width = 64 };
         send.Click += (_, _) => Fire();
-        var wrap = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6, 7, 0, 7) };
+        var wrap = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 3, 8, 0) };   // centres the box against the button
         wrap.Controls.Add(_input);
         bottom.Controls.Add(wrap);
         bottom.Controls.Add(send);
-        Controls.Add(_log);
+        // the log sits in a padded holder so text doesn't touch the panel's edges
+        var logHolder = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12, 10, 8, 6), BackColor = Color.FromArgb(32, 39, 48) };
+        logHolder.Controls.Add(_log);
+        Controls.Add(logHolder);
         Controls.Add(bottom);
         Controls.Add(header);
     }
+
+    private static readonly Font _gapFont = new("Segoe UI", 4f);
+
+    /// <summary>Text waiting in the input box (used by the chat screenshot).</summary>
+    public string Draft { set => _input.Text = value; }
 
     private void Fire()
     {
@@ -149,6 +157,9 @@ internal sealed class ChatPanel : Panel
         _log.AppendText($"{who}: ");
         _log.SelectionColor = Theme.RailText;
         _log.AppendText(text + Environment.NewLine);
+        _log.SelectionFont = _gapFont;              // a short blank line between messages
+        _log.AppendText(Environment.NewLine);
+        _log.SelectionFont = _log.Font;
         _log.ScrollToCaret();
     }
 }

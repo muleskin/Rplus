@@ -17,3 +17,4 @@ app/shots/*
 !app/shots/settings.png
 !app/shots/recent.png
 !app/shots/files.png
+!app/shots/chat.png

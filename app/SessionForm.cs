@@ -74,6 +74,15 @@ internal sealed class SessionForm : Form
 
     /// <summary>No connection: shows the given picture as the remote screen, plus a short chat.
     /// Used by --session-screenshot so screenshots never show a real desktop.</summary>
+    /// <summary>The chat panel's area inside the window (for the chat close-up screenshot).</summary>
+    public Rectangle ChatBoundsInWindow()
+    {
+        var p = _chat.PointToScreen(Point.Empty);
+        return new Rectangle(p.X - Bounds.X, p.Y - Bounds.Y, _chat.Width, _chat.Height);
+    }
+
+    public string ChatDraft { set => _chat.Draft = value; }
+
     public void ShowDemo(Bitmap frame, (string who, string text)[] chat)
     {
         _demo = true;

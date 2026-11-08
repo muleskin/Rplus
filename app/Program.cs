@@ -32,7 +32,7 @@ internal static class Program
 
         // --session-screenshot <out.png>: the session window with a made-up remote desktop (no connection)
         int ss = Array.IndexOf(args, "--session-screenshot");
-        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1], Array.IndexOf(args, "--files") >= 0); return; }
+        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1], Array.IndexOf(args, "--files") >= 0, Array.IndexOf(args, "--chat") >= 0); return; }
 
         // --demo: throwaway settings (random ID, no server, default approval), e.g. for README screenshots
         var cfg = Array.IndexOf(args, "--demo") >= 0 ? Config.Demo() : Config.Load();
@@ -174,7 +174,7 @@ internal static class Program
 
     /// <summary>Saves the session window showing a drawn demo desktop. Nothing real is captured:
     /// the settings are throwaway, there is no connection, and the window renders itself.</summary>
-    private static void RunSessionScreenshot(string path, bool files = false)
+    private static void RunSessionScreenshot(string path, bool files = false, bool chatOnly = false)
     {
         var cfg = Config.Demo();
         cfg.ViewStyle = "Adjust window";   // show the whole demo desktop
@@ -190,6 +190,21 @@ internal static class Program
                 new() { D("Invoices", 3), D("Photos", 12), F("Budget 2026.xlsx", 48_210, 1.2), F("Meeting notes.docx", 23_552, 0.3), F("Team photo.jpg", 2_457_600, 9), F("Setup guide.pdf", 1_310_720, 30) },
                 @"D:\Shared\Reports",
                 new() { D("Archive", 40), F("March figures.xlsx", 61_440, 0.1), F("Q1 summary.pdf", 845_000, 2), F("Sales chart.png", 312_000, 0.5), F("Readme.txt", 1_200, 60) });
+        }
+        else if (chatOnly)
+        {
+            form.ShowDemo(desk, new[]
+            {
+                ("Remote", "Hi! Can you see my screen?"),
+                ("Me", "Yes, all good. Which file is it?"),
+                ("Remote", "The sales report, it won't print."),
+                ("Me", "Found it. The printer was set to the old office one, switching it now."),
+                ("Remote", "Brilliant, thank you!"),
+                ("Me", "Done. I'll send you the March figures too."),
+                ("Remote", "Perfect, they're in the Reports folder."),
+            });
+            form.ChatDraft = "Got them, sending over now";
+            form.ClientSize = new Size(form.ClientSize.Width, 520);   // the close-up doesn't need the full height
         }
         else form.ShowDemo(desk, new[]
         {
@@ -209,7 +224,13 @@ internal static class Program
                 IntPtr hdc = g.GetHdc();
                 try { PrintWindow(form.Handle, hdc, 2 /*PW_RENDERFULLCONTENT*/); } finally { g.ReleaseHdc(hdc); }
             }
-            bmp.Save(path, ImageFormat.Png);
+            if (chatOnly)
+            {
+                var r = Rectangle.Intersect(form.ChatBoundsInWindow(), new Rectangle(0, 0, bmp.Width, bmp.Height));
+                using var crop = bmp.Clone(r, bmp.PixelFormat);
+                crop.Save(path, ImageFormat.Png);
+            }
+            else bmp.Save(path, ImageFormat.Png);
         }
         catch { }
         try { form.Close(); } catch { }

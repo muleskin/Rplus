@@ -10,6 +10,8 @@ self-hosted ID/relay server.
 
 ![Rplus session window with chat open](app/shots/session.png)
 
+<img src="app/shots/chat.png" width="280" alt="Rplus chat panel close-up">
+
 ![Rplus file transfer between two computers](app/shots/files.png)
 
 ![Rplus recent and favourite computers](app/shots/recent.png)
