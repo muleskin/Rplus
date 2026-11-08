@@ -49,9 +49,11 @@ ID, no ID server and no recent sessions, and saves nothing. Add `--screenshot <f
 picture of the home screen and exit (add `--page settings` or `--page recent` for those pages), which is handy for docs or demos that shouldn't show your
 real ID or server. `Rplus.exe --session-screenshot <file.png>` does the same for the session
 window, showing a made-up remote desktop instead of a real one; add `--files` for the file transfer
-view with made-up folders on both sides, `--chat` for a close-up of the chat panel, or `--toolbar` for the toolbar.
+view with made-up folders on both sides, `--chat` for a close-up of the chat panel, `--toolbar` for the toolbar, or `--progress` for the file view with a transfer under way.
 `Rplus.exe --accept-screenshot <file.png>` saves the accept window for a made-up visitor, and
 `--password-screenshot <file.png>` the password prompt.
+`Rplus.exe --transfer-selftest <file.txt>` sends test files both ways between a host and a
+controller on this PC (temp folders only) and writes what passed.
 
 ## What it does
 
