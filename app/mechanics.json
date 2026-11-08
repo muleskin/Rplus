@@ -15,6 +15,9 @@
     { "name": "one-time password charset", "group": "password", "value": "23456789abcdefghijkmnpqrstuvwxyz" },
     { "name": "one-time password numeric charset", "group": "password", "value": "0123456789" },
     { "name": "approve mode default", "group": "security", "value": "password+click" },
+    { "name": "approve mode both rule", "group": "security", "value": "password or accept window" },
+    { "name": "approve mode click skips password", "group": "security", "value": true },
+    { "name": "approve mode password shows no accept window", "group": "security", "value": true },
     { "name": "verification method default", "group": "security", "value": "use-both-passwords" },
 
     { "name": "enable keyboard", "group": "permissions", "value": true },

@@ -18,7 +18,9 @@ internal sealed class Host
     private volatile bool _running;
 
     // UI hooks (marshalled by the caller).
-    public Func<string, bool> ApproveConnection;     // peerId -> accept?
+    /// <summary>Shows the accept window: (peerId, cancel) → accepted? The token fires when the
+    /// visitor's password was accepted first, so the window should close itself.</summary>
+    public Func<string, CancellationToken, bool> ApproveConnection;
     public Action<string> OnChat;                    // text from peer
     public Action<string> OnStatus;                  // human status line
     public Action<bool> OnSessionState;              // true=connected, false=ended
@@ -82,35 +84,49 @@ internal sealed class Host
             string peerId = "";
             try { peerId = hello.Body<HelloBody>()?.id ?? ""; } catch { }
 
-            t.Send(Msg.Control(MsgType.AuthRequest,
-                new { needPassword = _cfg.RequiresPassword, needClick = _cfg.RequiresClickApproval }));
+            // approve-mode: "password" = password only (no
+            // accept window), "click" = accept window only (no password check), both = either one.
+            bool byPassword = _cfg.RequiresPassword;
+            bool byClick = _cfg.RequiresClickApproval;
+            t.Send(Msg.Control(MsgType.AuthRequest, new { needPassword = byPassword, needClick = byClick }));
 
-            if (_cfg.RequiresPassword)
+            using var approval = new CancellationTokenSource();
+            void CancelApproval() { try { approval.Cancel(); } catch { } }
+            Task<bool> clickTask = byClick ? Task.Run(() => ApproveConnection?.Invoke(peerId, approval.Token) ?? true) : null;
+            Task<Msg> pending = null;     // a message read while waiting; the session handles it next
+            bool authed = false;
+            if (!byPassword)
             {
-                var auth = t.Receive();
-                if (auth == null || auth.Type != MsgType.Auth) return;
-                string pw = "";
-                try { pw = auth.Body<AuthBody>()?.password ?? ""; } catch { }
-                if (!_cfg.PasswordAccepted(pw))
+                authed = clickTask.Result;
+            }
+            else
+            {
+                while (true)
                 {
-                    t.Send(Msg.Control(MsgType.AuthResult, new { ok = false, reason = "Wrong password" }));
-                    OnStatus?.Invoke($"Refused {peerId}: wrong password");
-                    return;
+                    pending ??= Task.Run(() => t.Receive());
+                    int idx = clickTask != null ? Task.WaitAny(pending, clickTask) : Task.WaitAny(pending);
+                    if (idx == 1) { authed = clickTask.Result; break; }       // the local user decided first
+                    var m = pending.Result; pending = null;
+                    if (m == null) { CancelApproval(); return; }            // they hung up
+                    if (m.Type != MsgType.Auth) continue;
+                    string pw = "";
+                    try { pw = m.Body<AuthBody>()?.password ?? ""; } catch { }
+                    if (_cfg.PasswordAccepted(pw)) { authed = true; CancelApproval(); break; }
+                    // Wrong password: with the accept window also allowed, they may try again or wait.
+                    bool retry = clickTask != null;
+                    t.Send(Msg.Control(MsgType.AuthResult, new { ok = false, reason = "Wrong password", retry }));
+                    OnStatus?.Invoke($"{peerId}: wrong password");
+                    if (!retry) return;
                 }
             }
-
-            if (_cfg.RequiresClickApproval)
+            if (!authed)
             {
-                bool ok = ApproveConnection?.Invoke(peerId) ?? true;
-                if (!ok)
-                {
-                    t.Send(Msg.Control(MsgType.AuthResult, new { ok = false, reason = "Refused" }));
-                    OnStatus?.Invoke($"Refused {peerId}");
-                    return;
-                }
+                t.Send(Msg.Control(MsgType.AuthResult, new { ok = false, reason = "Refused", retry = false }));
+                OnStatus?.Invoke($"Refused {peerId}");
+                return;
             }
 
-            t.Send(Msg.Control(MsgType.AuthResult, new { ok = true, reason = "" }));
+            t.Send(Msg.Control(MsgType.AuthResult, new { ok = true, reason = "", retry = false }));
             t.Send(Msg.Control(MsgType.Perms, new
             {
                 keyboard = _cfg.EnableKeyboard,
@@ -126,7 +142,7 @@ internal sealed class Host
             // reader for input/chat/file; streamer for frames
             var streamer = new Thread(() => StreamFrames(t)) { IsBackground = true };
             streamer.Start();
-            ReadLoop(t);
+            ReadLoop(t, pending);
             streamer.Join(500);
         }
         catch { }
@@ -166,12 +182,14 @@ internal sealed class Host
         }
     }
 
-    private void ReadLoop(Transport t)
+    private void ReadLoop(Transport t, Task<Msg> pending = null)
     {
         var rect = Native.VirtualScreen();
         while (_running && t.Connected)
         {
-            var m = t.Receive();
+            Msg m;
+            if (pending != null) { m = pending.Result; pending = null; }
+            else m = t.Receive();
             if (m == null) break;
             switch (m.Type)
             {

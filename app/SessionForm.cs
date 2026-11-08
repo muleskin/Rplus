@@ -135,8 +135,8 @@ internal sealed class SessionForm : Form
     {
         _client = new Client();
         _client.OnStatus = s => Ui(() => SetStatus(s));
-        _client.OnNeedPassword = () => Ui(PromptPassword);
-        _client.OnAuthResult = (ok, reason) => Ui(() => AuthResult(ok, reason));
+        _client.OnAuthRequest = (pw, click) => Ui(() => AuthRequested(pw, click));
+        _client.OnAuthResult = (ok, reason, retry) => Ui(() => AuthResult(ok, reason, retry));
         _client.OnPerms = (k, c, f, a) => Ui(() => { _canFile = f; });
         _client.OnFrame = (bmp, w, h) => Ui(() => _screen.SetFrame(bmp));
         _client.OnChat = t => Ui(() => _chat.Add("Remote", t));
@@ -168,9 +168,32 @@ internal sealed class SessionForm : Form
             SetStatus("Could not connect. Is Rplus running and sharing on the other PC?");
     }
 
-    private void AuthResult(bool ok, string reason)
+    private bool _byPassword, _byClick, _authed;
+    private PasswordForm _pwDialog;
+
+    /// <summary>The other PC says how it lets people in: password, its accept window, or either.</summary>
+    private void AuthRequested(bool byPassword, bool byClick)
     {
-        if (!ok) { SetStatus("Rejected: " + reason); return; }
+        _byPassword = byPassword; _byClick = byClick;
+        if (byClick) SetStatus("Waiting for the person at the other computer to accept…");
+        if (byPassword) PromptPassword();
+    }
+
+    private void AuthResult(bool ok, string reason, bool retry)
+    {
+        if (!ok)
+        {
+            if (retry)
+            {
+                SetStatus($"{reason}. Try again, or wait for them to accept.");
+                PromptPassword();
+            }
+            else SetStatus("Rejected: " + reason);
+            return;
+        }
+        _authed = true;
+        // Accepted from the other side while the password box was still open: close it.
+        if (_pwDialog is { IsDisposed: false } d) { d.DialogResult = DialogResult.Abort; d.Close(); }
         SetStatus("Connected");
         _client.SetQuality(QNum(), _cfg.Fps());
         PeerSaved?.Invoke(_peerId != null ? "" : _host, _peerId ?? _host);
@@ -180,9 +203,16 @@ internal sealed class SessionForm : Form
 
     private void PromptPassword()
     {
-        using var dlg = new PasswordForm(_host);
-        if (dlg.ShowDialog(this) == DialogResult.OK) _client.SendPassword(dlg.Password);
-        else Close();
+        if (_authed || _pwDialog != null) return;
+        using var dlg = new PasswordForm(_peerId ?? _host, _byClick);
+        _pwDialog = dlg;
+        DialogResult r;
+        try { r = dlg.ShowDialog(this); }
+        finally { _pwDialog = null; }
+        if (_authed) return;                                      // they accepted meanwhile
+        if (r == DialogResult.OK) _client.SendPassword(dlg.Password);
+        else if (_byClick) SetStatus("Waiting for the person at the other computer to accept…");
+        else Close();                                             // password-only: nothing to wait for
     }
 
     private void SendClipboard()
@@ -235,7 +265,7 @@ internal sealed class PasswordForm : Form
 {
     private readonly TextBox _box;
     public string Password => _box.Text;
-    public PasswordForm(string host)
+    public PasswordForm(string host, bool canWaitForAccept = false)
     {
         Text = "Password required";
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
@@ -243,6 +273,9 @@ internal sealed class PasswordForm : Form
         BackColor = Theme.Card; Font = Theme.F(10f);
         Controls.Add(new Label { Text = $"Enter the password for {host}", AutoSize = true,
             Location = new Point(20, 20), ForeColor = Theme.TextMain, Font = Theme.F(10f) });
+        if (canWaitForAccept)
+            Controls.Add(new Label { Text = "…or close this and wait for them to accept.", AutoSize = true,
+                Location = new Point(20, 82), ForeColor = Theme.TextDim, Font = Theme.F(8.5f) });
         _box = new TextBox { UseSystemPasswordChar = true, Location = new Point(20, 54), Width = 300, Font = Theme.F(12f) };
         Controls.Add(_box);
         var ok = new FlatButton { Text = "Connect", Primary = true, Location = new Point(172, 100), Size = new Size(148, 40) };

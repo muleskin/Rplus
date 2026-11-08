@@ -17,8 +17,8 @@ internal sealed class Client
     public Action<Bitmap, int, int> OnFrame;
     public Action<string> OnChat;
     public Action<string> OnStatus;
-    public Action<bool, string> OnAuthResult;    // ok, reason
-    public Action OnNeedPassword;                // host wants a password
+    public Action<bool, string, bool> OnAuthResult;   // ok, reason, may retry
+    public Action<bool, bool> OnAuthRequest;          // password accepted?, accept window shown?
     public Action<bool, bool, bool, bool> OnPerms; // keyboard, clipboard, file, audio
     public Action<string, List<Host.FileEntry>> OnFileList;
     public Action<string, byte[]> OnFileData;    // name, bytes
@@ -99,12 +99,12 @@ internal sealed class Client
                     try
                     {
                         var a = m.Body<AuthReq>();
-                        if (a is { needPassword: true }) OnNeedPassword?.Invoke();
+                        if (a != null) OnAuthRequest?.Invoke(a.needPassword, a.needClick);
                     }
                     catch { }
                     break;
                 case MsgType.AuthResult:
-                    try { var r = m.Body<AuthRes>(); OnAuthResult?.Invoke(r.ok, r.reason); } catch { }
+                    try { var r = m.Body<AuthRes>(); OnAuthResult?.Invoke(r.ok, r.reason, r.retry); } catch { }
                     break;
                 case MsgType.Perms:
                     try { var p = m.Body<PermsBody>(); OnPerms?.Invoke(p.keyboard, p.clipboard, p.file, p.audio); } catch { }
@@ -144,7 +144,7 @@ internal sealed class Client
     }
 
     private sealed class AuthReq { public bool needPassword { get; set; } public bool needClick { get; set; } }
-    private sealed class AuthRes { public bool ok { get; set; } public string reason { get; set; } }
+    private sealed class AuthRes { public bool ok { get; set; } public string reason { get; set; } public bool retry { get; set; } }
     private sealed class PermsBody { public bool keyboard { get; set; } public bool clipboard { get; set; } public bool file { get; set; } public bool audio { get; set; } }
     private sealed class FileListReply { public string path { get; set; } public List<Host.FileEntry> entries { get; set; } = new(); }
     private sealed class FileDataHead { public string name { get; set; } public int size { get; set; } }

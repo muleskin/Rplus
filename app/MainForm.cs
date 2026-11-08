@@ -21,6 +21,7 @@ internal sealed class MainForm : Form
     };
     private int _railHover = -1;
     private const int RailW = 84;
+    private Icon _logo;   // R+ logo in the side rail, same as the app icon
 
     // home controls
     private TextBox _remoteId;
@@ -119,13 +120,8 @@ internal sealed class MainForm : Form
             g.FillRectangle(b, 0, 0, RailW, ClientSize.Height);
 
         // logo "R+"
-        var logoRect = new Rectangle(0, 18, RailW, 44);
-        using (var lb = new SolidBrush(Theme.Accent))
-        using (var p = Theme.Round(new Rectangle(RailW / 2 - 20, 18, 40, 40), 11))
-            g.FillPath(lb, p);
-        TextRenderer.DrawText(g, "R+", Theme.F(13f, FontStyle.Bold),
-            new Rectangle(RailW / 2 - 20, 18, 40, 40), Color.White,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        _logo ??= Theme.AppIcon(40);
+        g.DrawIcon(_logo, new Rectangle(RailW / 2 - 20, 18, 40, 40));
 
         // items
         int y = 92;
@@ -273,15 +269,22 @@ internal sealed class MainForm : Form
         // security line
         string mode = _cfg.ApproveMode switch
         {
-            "password" => "Password only",
-            "click" => "Accept on this PC",
-            _ => "Password + accept",
+            "password" => "password only (no accept window)",
+            "click" => "accept window only",
+            _ => "password or accept window",
         };
         TextRenderer.DrawText(g, "", IconFont(9f),
             new Rectangle(lx, y, 20, 18), Theme.Ok, TextFormatFlags.Left);
-        TextRenderer.DrawText(g, "Approve: " + mode, Theme.F(8.5f),
-            new Rectangle(lx + 22, y, lw - 22, 18), Theme.TextDim, TextFormatFlags.Left);
-        y += 26;
+        // wraps onto a second line when the card is narrow
+        var secFlags = TextFormatFlags.Left | TextFormatFlags.WordBreak;
+        string secText = "Accept sessions via " + mode;
+        using (var secFont = Theme.F(8.5f))
+        {
+            int secH = Math.Max(18, TextRenderer.MeasureText(g, secText, secFont, new Size(lw - 22, 0), secFlags).Height);
+            TextRenderer.DrawText(g, secText, secFont,
+                new Rectangle(lx + 22, y, lw - 22, secH), Theme.TextDim, secFlags);
+            y += secH + 8;
+        }
 
         // ID server state
         Color dot = _serverOk == true ? Theme.Ok : _serverOk == false ? Theme.Danger : Color.FromArgb(230, 160, 40);
@@ -410,7 +413,7 @@ internal sealed class MainForm : Form
         if (_settingsBuilt) return;
         _settingsBuilt = true;
         var panel = new SettingsPanel(_cfg, IconFont) { Location = new Point(28, 20) };
-        panel.Changed = () => { _host.Quality = QualityNumber(); _host.Fps = _cfg.Fps(); };
+        panel.Changed = () => { _host.Quality = QualityNumber(); _host.Fps = _cfg.Fps(); _home.Invalidate(); };
         _settingsHost.Controls.Add(panel);
         _settingsPanel = panel;
         if (!_settingsResizeHooked)
@@ -472,22 +475,28 @@ internal sealed class MainForm : Form
     }
 
     // ---------------- helpers ----------------
-    private bool ApproveOnUi(string peerId)
+    private bool ApproveOnUi(string peerId, CancellationToken cancel)
     {
         bool ok = false;
         try
         {
             if (InvokeRequired)
-                Invoke(new Action(() => ok = AcceptDialog(peerId)));
-            else ok = AcceptDialog(peerId);
+                Invoke(new Action(() => ok = AcceptDialog(peerId, cancel)));
+            else ok = AcceptDialog(peerId, cancel);
         }
-        catch { ok = true; }
+        catch { ok = false; }   // never let someone in because the window couldn't open
         return ok;
     }
 
-    private bool AcceptDialog(string peerId)
+    private bool AcceptDialog(string peerId, CancellationToken cancel)
     {
+        if (cancel.IsCancellationRequested) return false;   // their password was already accepted
         using var dlg = new AcceptForm(peerId);
+        // If the visitor's password is accepted first, the window closes by itself.
+        using var reg = cancel.Register(() => OnUi(() =>
+        {
+            if (!dlg.IsDisposed && dlg.Visible) { dlg.DialogResult = DialogResult.Cancel; dlg.Close(); }
+        }));
         return dlg.ShowDialog(this) == DialogResult.Yes;
     }
 

@@ -17,6 +17,10 @@ internal static class Program
         for (int i = 0; i < args.Length; i++)
             if (args[i] == "--screenshot" && i + 1 < args.Length) shot = args[i + 1];
 
+        // --login-selftest <out.txt>: approve-mode rules on this PC only (no server).
+        int lt = Array.IndexOf(args, "--login-selftest");
+        if (lt >= 0 && lt + 1 < args.Length) { File.WriteAllText(args[lt + 1], LoginSelfTest()); return; }
+
         // --relay-selftest <idServer> <relayServer|-> <key|-> <out.txt>
         int st = Array.IndexOf(args, "--relay-selftest");
         if (st >= 0 && st + 4 < args.Length)
@@ -52,6 +56,57 @@ internal static class Program
         }
     }
 
+    /// <summary>Runs one login per approve-mode case against a local host and reports each.</summary>
+    private static string LoginSelfTest()
+    {
+        var log = new System.Text.StringBuilder();
+        int passed = 0, total = 0;
+
+        // (mode, password to send or null, local user clicks Accept after ms (-1 = never), expect ok, expect window cancelled)
+        var cases = new (string name, string mode, bool goodPw, bool sendPw, int clickAfterMs, bool expectOk, bool expectCancel)[]
+        {
+            ("both: right password wins, window closes", "both", true, true, -1, true, true),
+            ("both: wrong password, then local Accept",   "both", false, true, 1500, true, false),
+            ("password only: wrong password refused",     "password", false, true, -1, false, false),
+            ("click only: local Accept, no password",     "click", false, false, 500, true, false),
+        };
+        foreach (var c in cases)
+        {
+            total++;
+            var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            probe.Start(); int port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port; probe.Stop();
+            var cfg = Config.Temporary("", "", "");
+            cfg.ApproveMode = c.mode; cfg.DirectPort = port;
+            var host = new Host(cfg);
+            bool cancelled = false;
+            host.ApproveConnection = (_, tok) =>
+            {
+                if (c.clickAfterMs < 0) { cancelled = tok.WaitHandle.WaitOne(5000); return false; }
+                Thread.Sleep(c.clickAfterMs); return true;
+            };
+            host.Start();
+            var client = new Client();
+            var done = new ManualResetEventSlim();
+            bool ok = false; bool askedPw = false;
+            client.OnAuthRequest = (pw, click) =>
+            {
+                askedPw = pw;
+                if (pw && c.sendPw) client.SendPassword(c.goodPw ? cfg.RuntimeOneTimePassword : "nope");
+            };
+            client.OnAuthResult = (o, reason, retry) => { if (o || !retry) { ok = o; done.Set(); } };
+            client.OnClosed = () => done.Set();
+            client.Connect("127.0.0.1", port, "selftest");
+            done.Wait(8000);
+            Thread.Sleep(200);
+            bool good = ok == c.expectOk && (!c.expectCancel || cancelled) && (c.mode != "click" || !askedPw);
+            if (good) passed++;
+            log.AppendLine($"{(good ? "PASS" : "FAIL")}  {c.name}  (ok={ok}, window closed by itself={cancelled}, asked for password={askedPw})");
+            client.Close(); host.Stop();
+        }
+        log.AppendLine($"RESULT: {passed}/{total}");
+        return log.ToString();
+    }
+
     /// <summary>Register a throwaway host ID on the server, then connect to it by ID through the
     /// relay and log every step. Proves the server path end to end without any window.</summary>
     private static string RelaySelfTest(string idServer, string relay, string key)
@@ -61,7 +116,7 @@ internal static class Program
 
         var hostCfg = Config.Temporary(idServer, relay, key);
         var host = new Host(hostCfg) { OnStatus = s => L("host: " + s) };
-        host.ApproveConnection = _ => true;
+        host.ApproveConnection = (_, _) => true;
         host.RelayOnly = true;  // don't need the direct listener
         host.Start();
         var ready = new ManualResetEventSlim();
@@ -80,10 +135,13 @@ internal static class Program
         var client = new Client
         {
             OnStatus = s => L("client: " + s),
-            OnNeedPassword = null,
         };
-        client.OnNeedPassword = () => { L("client: host asked for password"); client.SendPassword(hostCfg.RuntimeOneTimePassword); };
-        client.OnAuthResult = (ok, reason) => { L($"client: auth {ok} {reason}"); ok2 = ok; if (!ok) done.Set(); };
+        client.OnAuthRequest = (pw, click) =>
+        {
+            L($"client: host asks for password={pw} accept-window={click}");
+            if (pw) client.SendPassword(hostCfg.RuntimeOneTimePassword);
+        };
+        client.OnAuthResult = (ok, reason, retry) => { L($"client: auth {ok} {reason}"); ok2 = ok; if (!ok && !retry) done.Set(); };
         client.OnFrame = (bmp, w, h) => { L($"client: first frame {w}x{h}"); bmp.Dispose(); done.Set(); };
         client.OnClosed = () => { L("client: closed"); done.Set(); };
         try

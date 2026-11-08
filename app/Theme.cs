@@ -44,6 +44,13 @@ internal static class Theme
         return new Icon(s);
     }
 
+    /// <summary>The R+ app icon at a given pixel size (the in-app logo).</summary>
+    public static Icon AppIcon(int size)
+    {
+        using var s = typeof(Theme).Assembly.GetManifestResourceStream("rplus.ico")!;
+        return new Icon(s, size, size);
+    }
+
     public static void FillRound(Graphics g, Rectangle r, int radius, Color c)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;

@@ -31,6 +31,16 @@ these values is `mechanics.json`.
 | `approve-mode` | "password", "click", both | both |
 | `verification-method` | "use-temporary-password", "use-permanent-password", both | both |
 
+How approve-mode is applied at login:
+- **click**: no password check; the session waits for the local user's Accept.
+- **password**: the password is checked (per verification-method); no accept window.
+- **both**: either a correct password or the local user's Accept lets the session in.
+
+Settings ▸ "Accept sessions via" has two switches, "Accept window" and "Password". At least one
+stays on; both on = either works. If the visitor's password is accepted first, the accept window
+closes by itself. A wrong password can be retried while the accept window is still allowed.
+`Rplus.exe --login-selftest <out.txt>` checks these rules against a local host.
+
 ## Permissions
 
 `enable-keyboard`, `enable-clipboard`, `enable-audio`, `enable-file-transfer`; all on by default.

@@ -21,11 +21,31 @@ internal sealed class SettingsPanel : Panel
         Title("Settings");
 
         Section("Security");
-        var approve = Combo(new[] { "Password + accept", "Password only", "Accept on this PC" },
-            _cfg.ApproveMode switch { "password" => 1, "click" => 2, _ => 0 });
-        Row("Approve mode", approve);
-        approve.SelectedIndexChanged += (_, _) =>
-        { _cfg.ApproveMode = approve.SelectedIndex switch { 1 => "password", 2 => "click", _ => "both" }; Save(); };
+        // approve-mode: "click" (accept window), "password", or both (the default).
+        var acceptWin = Check("Accept window (someone at this PC clicks Accept)", _cfg.RequiresClickApproval);
+        var needPw = Check("Password", _cfg.RequiresPassword);
+        Row("Accept sessions via", acceptWin);
+        Row("", needPw);
+        var approveNote = new Label
+        {
+            Text = "With both on, either one lets them in. At least one must stay on.",
+            Font = Theme.F(8.5f), ForeColor = Theme.TextDim, AutoSize = true,
+            Location = new Point(210, _y - 6), BackColor = Color.Transparent,
+        };
+        Controls.Add(approveNote);
+        _y += 18;
+        bool syncing = false;
+        void ApplyApprove(CheckBox changed, CheckBox other)
+        {
+            if (syncing) return;
+            syncing = true;
+            if (!acceptWin.Checked && !needPw.Checked) other.Checked = true;   // never both off
+            syncing = false;
+            _cfg.ApproveMode = acceptWin.Checked && needPw.Checked ? "both" : acceptWin.Checked ? "click" : "password";
+            Save();
+        }
+        acceptWin.CheckedChanged += (_, _) => ApplyApprove(acceptWin, needPw);
+        needPw.CheckedChanged += (_, _) => ApplyApprove(needPw, acceptWin);
 
         var verify = Check("Only allow the permanent password (not the one-time one)", _cfg.UsePermanentPassword);
         Row("Verification", verify);
