@@ -32,7 +32,7 @@ internal static class Program
 
         // --session-screenshot <out.png>: the session window with a made-up remote desktop (no connection)
         int ss = Array.IndexOf(args, "--session-screenshot");
-        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1]); return; }
+        if (ss >= 0 && ss + 1 < args.Length) { RunSessionScreenshot(args[ss + 1], Array.IndexOf(args, "--files") >= 0); return; }
 
         // --demo: throwaway settings (random ID, no server, default approval), e.g. for README screenshots
         var cfg = Array.IndexOf(args, "--demo") >= 0 ? Config.Demo() : Config.Load();
@@ -174,14 +174,24 @@ internal static class Program
 
     /// <summary>Saves the session window showing a drawn demo desktop. Nothing real is captured:
     /// the settings are throwaway, there is no connection, and the window renders itself.</summary>
-    private static void RunSessionScreenshot(string path)
+    private static void RunSessionScreenshot(string path, bool files = false)
     {
         var cfg = Config.Demo();
         cfg.ViewStyle = "Adjust window";   // show the whole demo desktop
         string peer = Config.Demo().Id;
         var form = new SessionForm(cfg, "", 0, false, peer) { StartPosition = FormStartPosition.Manual, Location = new Point(0, 0) };
         using var desk = DemoDesktop(1440, 900);
-        form.ShowDemo(desk, new[]
+        if (files)
+        {
+            var now = DateTime.Now;
+            Host.FileEntry D(string n, double daysAgo) => new() { name = n, isDir = true, modified = now.AddDays(-daysAgo).ToString("yyyy-MM-dd HH:mm") };
+            Host.FileEntry F(string n, long size, double daysAgo) => new() { name = n, size = size, modified = now.AddDays(-daysAgo).ToString("yyyy-MM-dd HH:mm") };
+            form.ShowDemoFiles(@"C:\Users\Public\Documents",
+                new() { D("Invoices", 3), D("Photos", 12), F("Budget 2026.xlsx", 48_210, 1.2), F("Meeting notes.docx", 23_552, 0.3), F("Team photo.jpg", 2_457_600, 9), F("Setup guide.pdf", 1_310_720, 30) },
+                @"D:\Shared\Reports",
+                new() { D("Archive", 40), F("March figures.xlsx", 61_440, 0.1), F("Q1 summary.pdf", 845_000, 2), F("Sales chart.png", 312_000, 0.5), F("Readme.txt", 1_200, 60) });
+        }
+        else form.ShowDemo(desk, new[]
         {
             ("Remote", "Hi! Can you see my screen?"),
             ("Me", "Yes, all good. Opening the report now."),

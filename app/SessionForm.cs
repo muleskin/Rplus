@@ -58,7 +58,19 @@ internal sealed class SessionForm : Form
     }
 
     private bool _demo;
-    private ToolButton _lastTool, _chatBtn;
+    private ToolButton _lastTool, _chatBtn, _filesBtn;
+
+    /// <summary>Demo file transfer view: made-up folders on both sides, no connection.</summary>
+    public void ShowDemoFiles(string localPath, List<Host.FileEntry> local, string remotePath, List<Host.FileEntry> remote)
+    {
+        _demo = true;
+        _fileMode = true;
+        _files.Visible = true;
+        _screen.Visible = false;
+        _files.ShowDemo(localPath, local, remotePath, remote);
+        if (_filesBtn != null) { _filesBtn.On = true; _filesBtn.Invalidate(); }
+        SetStatus("Connected");
+    }
 
     /// <summary>No connection: shows the given picture as the remote screen, plus a short chat.
     /// Used by --session-screenshot so screenshots never show a real desktop.</summary>
@@ -105,6 +117,7 @@ internal sealed class SessionForm : Form
         x = AddTool(x, "", "Keyboard", true, b => _screen.ForwardKeys = b);
         x = AddTool(x, "", "Clipboard", false, _ => SendClipboard(), toggle: false);
         x = AddTool(x, "", "Files", false, b => ToggleFiles(b));
+        _filesBtn = _lastTool;
         x = AddTool(x, "", "Chat", false, b => { _chat.Visible = b; });
         _chatBtn = _lastTool;
         x = AddTool(x, "", "Full screen", false, b => ToggleFullscreen(b));

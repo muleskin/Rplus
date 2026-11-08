@@ -10,6 +10,8 @@ self-hosted ID/relay server.
 
 ![Rplus session window with chat open](app/shots/session.png)
 
+![Rplus file transfer between two computers](app/shots/files.png)
+
 ![Rplus recent and favourite computers](app/shots/recent.png)
 
 ![Rplus settings page](app/shots/settings.png)

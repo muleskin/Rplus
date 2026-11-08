@@ -196,8 +196,17 @@ internal sealed class FilePanel : Panel
         var lv = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true,
             Font = Theme.F(9f), BorderStyle = BorderStyle.FixedSingle };
         lv.Columns.Add("Name", 230);
-        lv.Columns.Add("Size", 90);
+        lv.Columns.Add("Size", 80);
         lv.Columns.Add("Modified", 120);
+        lv.SmallImageList = ListIcons();
+        // Name takes whatever width is left, so the pane never needs a horizontal scrollbar.
+        void FitColumns()
+        {
+            int rest = lv.ClientSize.Width - lv.Columns[1].Width - lv.Columns[2].Width;
+            if (rest > 80) lv.Columns[0].Width = rest;
+        }
+        lv.ClientSizeChanged += (_, _) => FitColumns();
+        FitColumns();
         panel.Controls.Add(lv);
         panel.Controls.Add(pathBar);
         panel.Controls.Add(title);
@@ -217,6 +226,15 @@ internal sealed class FilePanel : Panel
     }
 
     public void Attach(Client c) => _client = c;
+
+    /// <summary>Made-up listings on both sides, for --session-screenshot --files (never reads the disk).</summary>
+    public void ShowDemo(string localPath, List<Host.FileEntry> local, string remotePath, List<Host.FileEntry> remote)
+    {
+        _localDir = localPath; _localPath.Text = localPath; _local.Items.Clear();
+        foreach (var e in local.OrderByDescending(x => x.isDir).ThenBy(x => x.name))
+            AddItem(_local, e.name, e.isDir, e.size, e.modified);
+        ShowRemote(remotePath, remote);
+    }
 
     public void Start()
     {
@@ -325,6 +343,31 @@ internal sealed class FilePanel : Panel
             LoadLocal(_localDir);
         }
         catch { }
+    }
+
+    private static ImageList _listIcons;
+    /// <summary>Folder (0) and file (1) icons drawn with the system icon font.</summary>
+    private static ImageList ListIcons()
+    {
+        if (_listIcons != null) return _listIcons;
+        _listIcons = new ImageList { ImageSize = new Size(16, 16), ColorDepth = ColorDepth.Depth32Bit };
+        string fontName;
+        using (var probe = new Font("Segoe Fluent Icons", 9f))
+            fontName = probe.Name == "Segoe Fluent Icons" ? "Segoe Fluent Icons" : "Segoe MDL2 Assets";
+        foreach (var (glyph, color) in new[] { ("", Color.FromArgb(230, 160, 40)), ("", Color.FromArgb(110, 120, 135)) })
+        {
+            var bmp = new Bitmap(16, 16);
+            using (var g = Graphics.FromImage(bmp))
+            using (var f = new Font(fontName, 12f, FontStyle.Regular, GraphicsUnit.Pixel))
+            using (var br = new SolidBrush(color))
+            using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            {
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                g.DrawString(glyph, f, br, new RectangleF(0, 0, 16, 16), sf);
+            }
+            _listIcons.Images.Add(bmp);
+        }
+        return _listIcons;
     }
 
     private static void AddItem(ListView lv, string name, bool dir, long size, string modified)
