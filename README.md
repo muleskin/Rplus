@@ -6,6 +6,14 @@ Remote desktop for Windows. Share your screen with an ID and a one-time password
 another computer running Rplus — on the same network, by direct IP, or through your own
 self-hosted ID/relay server.
 
+## Download
+
+Get `Rplus.exe` from the [latest release](https://github.com/muleskin/Rplus/releases/latest).
+It's one self-contained file for 64-bit Windows, so you don't need to install .NET. Download it and run it.
+
+Windows Firewall will ask to allow Rplus on your network the first time: allow it on private
+networks so other computers can connect.
+
 ## What it does
 
 - **Your desktop:** a device ID made from the network card and a one-time password (6, 8 or 10
@@ -30,5 +38,5 @@ Needs the .NET 8 SDK (or newer) on Windows.
 ```powershell
 cd app
 dotnet run                     # run from source
-dotnet build -c Release        # app\bin\Release\net8.0-windows\Rplus.exe
+dotnet publish -p:PublishProfile=SingleExe   # single self-contained exe in app\publish\Rplus.exe
 ```
