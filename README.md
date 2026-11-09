@@ -58,6 +58,8 @@ view with made-up folders on both sides, `--chat` for a close-up of the chat pan
 `--password-screenshot <file.png>` the password prompt.
 `Rplus.exe --transfer-selftest <file.txt>` sends test files both ways between a host and a
 controller on this PC (temp folders only) and writes what passed.
+Rplus follows the Windows light/dark setting; add `--theme dark` or `--theme light` to any of these
+to force one, e.g. for screenshots.
 
 ## What it does
 
